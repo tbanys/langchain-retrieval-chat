@@ -6,7 +6,7 @@ export default function AgentsPage() {
     <GuideInfoBox>
       <ul>
         <li className="hidden text-l md:block">
-          <span className="ml-2">How can I help?</span>
+          <span className="ml-2"></span>
         </li>
       </ul>
     </GuideInfoBox>
