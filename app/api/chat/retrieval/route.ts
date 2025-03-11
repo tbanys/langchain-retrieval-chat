@@ -81,20 +81,29 @@ export async function POST(req: NextRequest) {
     const frequencyPenalty = body.frequencyPenalty ?? 0;
     const presencePenalty = body.presencePenalty ?? 0;
     const maxTokens = body.maxTokens ?? 2048;
+    const apiKey = body.apiKey; // Get API key from request body
+
+    // Check if API key is provided
+    if (!apiKey) {
+      return NextResponse.json({ error: "OpenAI API key is required" }, { status: 400 });
+    }
 
     const model = new ChatOpenAI({
       model: modelName,
       temperature: temperature,
       frequencyPenalty: frequencyPenalty,
       presencePenalty: presencePenalty,
-      maxTokens: maxTokens
+      maxTokens: maxTokens,
+      openAIApiKey: apiKey, // Use the provided API key
     });
 
     const client = createClient(
       process.env.SUPABASE_URL!,
       process.env.SUPABASE_PRIVATE_KEY!,
     );
-    const vectorstore = new SupabaseVectorStore(new OpenAIEmbeddings(), {
+    const vectorstore = new SupabaseVectorStore(new OpenAIEmbeddings({
+      openAIApiKey: apiKey, // Use the provided API key for embeddings
+    }), {
       client,
       tableName: "documents",
       queryName: "match_documents",

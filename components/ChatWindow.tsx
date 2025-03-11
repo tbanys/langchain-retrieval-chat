@@ -2,7 +2,7 @@
 
 import { type Message } from "ai";
 import { useChat } from "ai/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -182,6 +182,8 @@ export function ChatWindow(props: {
     useState(false);
   const [temperature, setTemperature] = useState(0.8); // Default temperature value
   const [systemPrompt, setSystemPrompt] = useState("You are a helpful AI assistant."); // Default system prompt
+  const [apiKey, setApiKey] = useState(""); // State for storing the OpenAI API key
+  const [isApiKeySet, setIsApiKeySet] = useState(false); // Track if API key has been set
 
   const [sourcesForMessages, setSourcesForMessages] = useState<
     Record<string, any>
@@ -219,9 +221,25 @@ export function ChatWindow(props: {
       model: model,
       frequencyPenalty: frequencyPenalty,
       presencePenalty: presencePenalty,
-      maxTokens: maxTokens
+      maxTokens: maxTokens,
+      apiKey: apiKey // Pass the API key to the backend
     },
   });
+
+
+  // Add a greeting message when API key is set
+  useEffect(() => {
+    if (isApiKeySet && chat.messages.length === 0) {
+      chat.setMessages([
+        {
+          id: "greeting",
+          content: "Hello! I'm your AI assistant. How can I help you today?",
+          role: "assistant",
+        },
+      ]);
+    }
+  }, [isApiKeySet, chat]);
+
 
   async function sendMessage(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -448,10 +466,56 @@ export function ChatWindow(props: {
     );
   };
 
+  // API Key dialog component
+  const ApiKeyDialog = () => {
+    const [localApiKey, setLocalApiKey] = useState(apiKey);
+    
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="ghost" className="pl-2 pr-3">
+            <span>{isApiKeySet ? "API Key ✓" : "Set API Key"}</span>
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>OpenAI API Key</DialogTitle>
+            <DialogDescription>
+              Enter your OpenAI API key to use the chat functionality.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <input
+              type="password"
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              placeholder="sk-..."
+              value={localApiKey}
+              onChange={(e) => setLocalApiKey(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="submit" onClick={() => {
+              setApiKey(localApiKey);
+              setIsApiKeySet(localApiKey.trim().length > 0);
+            }}>Save API Key</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   return (
     <ChatLayout
       content={
-        chat.messages.length === 0 ? (
+        !isApiKeySet ? (
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="mb-4 text-center">
+              <h2 className="text-2xl font-bold">Welcome to the AI Chat</h2>
+              <p className="text-muted-foreground">Please set your OpenAI API key to start chatting</p>
+            </div>
+            <ApiKeyDialog />
+          </div>
+        ) : chat.messages.length === 0 ? (
           <div>{props.emptyStateComponent}</div>
         ) : (
           <ChatMessages
@@ -463,57 +527,64 @@ export function ChatWindow(props: {
         )
       }
       footer={
-        <ChatInput
-          value={chat.input}
-          onChange={chat.handleInputChange}
-          onSubmit={sendMessage}
-          loading={chat.isLoading || intermediateStepsLoading}
-          placeholder={props.placeholder ?? "What's it like to be a pirate?"}
-          actions={
-            <div className="flex items-center gap-2">
-              <OpenAISettingsDialog />
-              <SystemPromptDialog />
-            </div>
-          }
-        >
-          {props.showIngestForm && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="pl-2 pr-3 -ml-2"
-                  disabled={chat.messages.length !== 0}
-                >
-                  <Paperclip className="size-4" />
-                  <span>Upload document</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Upload document</DialogTitle>
-                  <DialogDescription>
-                    Upload a document to use for the chat.
-                  </DialogDescription>
-                </DialogHeader>
-                <UploadDocumentsForm />
-              </DialogContent>
-            </Dialog>
-          )}
-          {props.showIntermediateStepsToggle && (
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="show_intermediate_steps"
-                name="show_intermediate_steps"
-                checked={showIntermediateSteps}
-                disabled={chat.isLoading || intermediateStepsLoading}
-                onCheckedChange={(e) => setShowIntermediateSteps(!!e)}
-              />
-              <label htmlFor="show_intermediate_steps" className="text-sm">
-                Show intermediate steps
-              </label>
-            </div>
-          )}
-        </ChatInput>
+        isApiKeySet ? (
+          <ChatInput
+            value={chat.input}
+            onChange={chat.handleInputChange}
+            onSubmit={sendMessage}
+            loading={chat.isLoading || intermediateStepsLoading}
+            placeholder={props.placeholder ?? "What's it like to be a pirate?"}
+            actions={
+              <div className="flex items-center gap-2">
+                <ApiKeyDialog />
+                <OpenAISettingsDialog />
+                <SystemPromptDialog />
+              </div>
+            }
+          >
+            {props.showIngestForm && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="pl-2 pr-3 -ml-2"
+                    disabled={chat.messages.length !== 0}
+                  >
+                    <Paperclip className="size-4" />
+                    <span>Upload document</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Upload document</DialogTitle>
+                    <DialogDescription>
+                      Upload a document to use for the chat.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <UploadDocumentsForm />
+                </DialogContent>
+              </Dialog>
+            )}
+            {props.showIntermediateStepsToggle && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="show_intermediate_steps"
+                  name="show_intermediate_steps"
+                  checked={showIntermediateSteps}
+                  disabled={chat.isLoading || intermediateStepsLoading}
+                  onCheckedChange={(e) => setShowIntermediateSteps(!!e)}
+                />
+                <label htmlFor="show_intermediate_steps" className="text-sm">
+                  Show intermediate steps
+                </label>
+              </div>
+            )}
+          </ChatInput>
+        ) : (
+          <div className="flex justify-center pb-4">
+            <ApiKeyDialog />
+          </div>
+        )
       }
     />
   );
