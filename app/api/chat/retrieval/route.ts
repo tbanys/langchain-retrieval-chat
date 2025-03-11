@@ -77,10 +77,17 @@ export async function POST(req: NextRequest) {
     const currentMessageContent = messages[messages.length - 1].content;
     const temperature = body.temperature ?? 0.2;
     const systemPrompt = body.systemPrompt ?? "";
+    const modelName = body.model ?? "gpt-4";
+    const frequencyPenalty = body.frequencyPenalty ?? 0;
+    const presencePenalty = body.presencePenalty ?? 0;
+    const maxTokens = body.maxTokens ?? 2048;
 
     const model = new ChatOpenAI({
-      model: "gpt-4o-mini",
+      model: modelName,
       temperature: temperature,
+      frequencyPenalty: frequencyPenalty,
+      presencePenalty: presencePenalty,
+      maxTokens: maxTokens
     });
 
     const client = createClient(

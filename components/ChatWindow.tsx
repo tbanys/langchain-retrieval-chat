@@ -187,6 +187,11 @@ export function ChatWindow(props: {
     Record<string, any>
   >({});
 
+  const [model, setModel] = useState("gpt-4");
+  const [frequencyPenalty, setFrequencyPenalty] = useState(0);
+  const [presencePenalty, setPresencePenalty] = useState(0);
+  const [maxTokens, setMaxTokens] = useState(2048);
+
   const chat = useChat({
     api: props.endpoint,
     onResponse(response) {
@@ -209,8 +214,12 @@ export function ChatWindow(props: {
         description: e.message,
       }),
     body: {
-      temperature: temperature, // Pass temperature as part of the request body
-      systemPrompt: systemPrompt, // Pass system prompt as part of the request body
+      temperature: temperature,
+      systemPrompt: systemPrompt,
+      model: model,
+      frequencyPenalty: frequencyPenalty,
+      presencePenalty: presencePenalty,
+      maxTokens: maxTokens
     },
   });
 
@@ -239,8 +248,12 @@ export function ChatWindow(props: {
       body: JSON.stringify({
         messages: messagesWithUserReply,
         show_intermediate_steps: true,
-        temperature: temperature, // Pass temperature here too for intermediate steps
-        systemPrompt: systemPrompt, // Pass system prompt here too for intermediate steps
+        temperature: temperature,
+        systemPrompt: systemPrompt,
+        model: model,
+        frequencyPenalty: frequencyPenalty,
+        presencePenalty: presencePenalty,
+        maxTokens: maxTokens
       }),
     });
     const json = await response.json();
@@ -301,22 +314,7 @@ export function ChatWindow(props: {
   }
 
   // Temperature slider component with popover
-  const TemperatureControl = () => (
-      <div className="grid gap-2">
-        <div className="grid grid-cols-3 items-center gap-4">
-          <span className="text-sm">Precise</span>
-          <Slider
-            value={[temperature]}
-            min={0}
-            max={1}
-            step={0.1}
-            onValueChange={(value) => setTemperature(value[0])}
-            className="col-span-1"
-          />
-          <span className="text-sm">Creative</span>
-        </div>
-      </div>
-  );
+  // This component has been moved into the OpenAISettingsDialog
   
   // System prompt dialog component
   const SystemPromptDialog = () => {
@@ -342,24 +340,108 @@ export function ChatWindow(props: {
               placeholder="Enter system instructions here..."
               value={localSystemPrompt}
               onChange={(e) => setLocalSystemPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                }
-              }}
             />
           </div>
           <DialogFooter>
-            <Button 
-              type="button" 
-              onClick={() => {
-                setSystemPrompt(localSystemPrompt);
-                const closeButton = document.querySelector('[data-radix-dialog-close]') as HTMLElement;
-                if (closeButton) closeButton.click();
-              }}
-            >
-              Save Changes
-            </Button>
+            <Button type="submit" onClick={() => {
+              setSystemPrompt(localSystemPrompt);
+              // No need to manually close the dialog as the DialogClose button will handle this
+            }}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  // OpenAI Settings dialog component
+  const OpenAISettingsDialog = () => {
+    const [localModel, setLocalModel] = useState(model);
+    const [localFrequencyPenalty, setLocalFrequencyPenalty] = useState(frequencyPenalty);
+    const [localPresencePenalty, setLocalPresencePenalty] = useState(presencePenalty);
+    const [localMaxTokens, setLocalMaxTokens] = useState(maxTokens);
+    const [localTemperature, setLocalTemperature] = useState(temperature);
+    
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="ghost" className="pl-2 pr-3">
+            <span>AI Settings</span>
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>OpenAI Settings</DialogTitle>
+            <DialogDescription>
+              Configure the AI model parameters to customize its behavior.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Model</label>
+              <select
+                value={localModel}
+                onChange={(e) => setLocalModel(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="gpt-4">GPT-4</option>
+                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+              </select>
+            </div>
+            
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Temperature</label>
+                <Slider
+                  value={[localTemperature]}
+                  min={0}
+                  max={1}
+                  step={0.1}
+                  onValueChange={(value) => setLocalTemperature(value[0])}
+                  className="col-span-1"
+                />
+            </div>
+            
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Frequency Penalty</label>
+              <Slider
+                value={[localFrequencyPenalty]}
+                min={0}
+                max={2}
+                step={0.1}
+                onValueChange={(value) => setLocalFrequencyPenalty(value[0])}
+              />
+            </div>
+            
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Presence Penalty</label>
+              <Slider
+                value={[localPresencePenalty]}
+                min={0}
+                max={2}
+                step={0.1}
+                onValueChange={(value) => setLocalPresencePenalty(value[0])}
+              />
+            </div>
+            
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Max Tokens</label>
+              <Slider
+                value={[localMaxTokens]}
+                min={1}
+                max={4096}
+                step={1}
+                onValueChange={(value) => setLocalMaxTokens(value[0])}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="submit" onClick={() => {
+              setModel(localModel);
+              setFrequencyPenalty(localFrequencyPenalty);
+              setPresencePenalty(localPresencePenalty);
+              setMaxTokens(localMaxTokens);
+              setTemperature(localTemperature);
+              // No need to manually close the dialog as the DialogClose button will handle this
+            }}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -389,8 +471,8 @@ export function ChatWindow(props: {
           placeholder={props.placeholder ?? "What's it like to be a pirate?"}
           actions={
             <div className="flex items-center gap-2">
+              <OpenAISettingsDialog />
               <SystemPromptDialog />
-              <TemperatureControl />
             </div>
           }
         >
