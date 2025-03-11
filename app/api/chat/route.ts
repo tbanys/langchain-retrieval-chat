@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const messages = body.messages ?? [];
+    const temperature = body.temperature ?? 0.8; // Get temperature from request body, default to 0.8
     const formattedPreviousMessages = messages.slice(0, -1).map(formatMessage);
     const currentMessageContent = messages[messages.length - 1].content;
     const prompt = PromptTemplate.fromTemplate(TEMPLATE);
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
      * https://js.langchain.com/docs/modules/model_io/models/
      */
     const model = new ChatOpenAI({
-      temperature: 0.8,
+      temperature: temperature, // Use temperature from request
       model: "gpt-4o-mini",
     });
 

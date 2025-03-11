@@ -21,6 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
+import { Slider } from "./ui/slider";
 import { cn } from "@/utils/cn";
 
 function ChatMessages(props: {
@@ -178,6 +179,7 @@ export function ChatWindow(props: {
   );
   const [intermediateStepsLoading, setIntermediateStepsLoading] =
     useState(false);
+  const [temperature, setTemperature] = useState(0.8); // Default temperature value
 
   const [sourcesForMessages, setSourcesForMessages] = useState<
     Record<string, any>
@@ -204,6 +206,9 @@ export function ChatWindow(props: {
       toast.error(`Error while processing your request`, {
         description: e.message,
       }),
+    body: {
+      temperature: temperature, // Pass temperature as part of the request body
+    },
   });
 
   async function sendMessage(e: FormEvent<HTMLFormElement>) {
@@ -231,6 +236,7 @@ export function ChatWindow(props: {
       body: JSON.stringify({
         messages: messagesWithUserReply,
         show_intermediate_steps: true,
+        temperature: temperature, // Pass temperature here too for intermediate steps
       }),
     });
     const json = await response.json();
@@ -270,6 +276,7 @@ export function ChatWindow(props: {
         }),
       });
     }
+
     const newMessages = messagesWithUserReply;
     for (const message of intermediateStepMessages) {
       newMessages.push(message);
@@ -288,6 +295,24 @@ export function ChatWindow(props: {
       },
     ]);
   }
+
+  // Temperature slider component with popover
+  const TemperatureControl = () => (
+      <div className="grid gap-2">
+        <div className="grid grid-cols-3 items-center gap-4">
+          <span className="text-sm">Precise</span>
+          <Slider
+            value={[temperature]}
+            min={0}
+            max={1}
+            step={0.1}
+            onValueChange={(value) => setTemperature(value[0])}
+            className="col-span-1"
+          />
+          <span className="text-sm">Creative</span>
+        </div>
+      </div>
+  );
 
   return (
     <ChatLayout
@@ -310,6 +335,7 @@ export function ChatWindow(props: {
           onSubmit={sendMessage}
           loading={chat.isLoading || intermediateStepsLoading}
           placeholder={props.placeholder ?? "What's it like to be a pirate?"}
+          actions={<TemperatureControl />}
         >
           {props.showIngestForm && (
             <Dialog>
@@ -334,7 +360,6 @@ export function ChatWindow(props: {
               </DialogContent>
             </Dialog>
           )}
-
           {props.showIntermediateStepsToggle && (
             <div className="flex items-center gap-2">
               <Checkbox
