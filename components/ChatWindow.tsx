@@ -17,6 +17,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -180,6 +181,7 @@ export function ChatWindow(props: {
   const [intermediateStepsLoading, setIntermediateStepsLoading] =
     useState(false);
   const [temperature, setTemperature] = useState(0.8); // Default temperature value
+  const [systemPrompt, setSystemPrompt] = useState("You are a helpful AI assistant."); // Default system prompt
 
   const [sourcesForMessages, setSourcesForMessages] = useState<
     Record<string, any>
@@ -208,6 +210,7 @@ export function ChatWindow(props: {
       }),
     body: {
       temperature: temperature, // Pass temperature as part of the request body
+      systemPrompt: systemPrompt, // Pass system prompt as part of the request body
     },
   });
 
@@ -237,6 +240,7 @@ export function ChatWindow(props: {
         messages: messagesWithUserReply,
         show_intermediate_steps: true,
         temperature: temperature, // Pass temperature here too for intermediate steps
+        systemPrompt: systemPrompt, // Pass system prompt here too for intermediate steps
       }),
     });
     const json = await response.json();
@@ -313,6 +317,54 @@ export function ChatWindow(props: {
         </div>
       </div>
   );
+  
+  // System prompt dialog component
+  const SystemPromptDialog = () => {
+    const [localSystemPrompt, setLocalSystemPrompt] = useState(systemPrompt);
+    
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="ghost" className="pl-2 pr-3">
+            <span>System Prompt</span>
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit System Prompt</DialogTitle>
+            <DialogDescription>
+              Customize the AI assistant behavior by editing the system instructions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <textarea 
+              className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="Enter system instructions here..."
+              value={localSystemPrompt}
+              onChange={(e) => setLocalSystemPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button 
+              type="button" 
+              onClick={() => {
+                setSystemPrompt(localSystemPrompt);
+                const closeButton = document.querySelector('[data-radix-dialog-close]') as HTMLElement;
+                if (closeButton) closeButton.click();
+              }}
+            >
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
 
   return (
     <ChatLayout
@@ -335,7 +387,12 @@ export function ChatWindow(props: {
           onSubmit={sendMessage}
           loading={chat.isLoading || intermediateStepsLoading}
           placeholder={props.placeholder ?? "What's it like to be a pirate?"}
-          actions={<TemperatureControl />}
+          actions={
+            <div className="flex items-center gap-2">
+              <SystemPromptDialog />
+              <TemperatureControl />
+            </div>
+          }
         >
           {props.showIngestForm && (
             <Dialog>

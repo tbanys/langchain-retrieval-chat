@@ -45,8 +45,7 @@ const condenseQuestionPrompt = PromptTemplate.fromTemplate(
   CONDENSE_QUESTION_TEMPLATE,
 );
 
-const ANSWER_TEMPLATE = `You are an energetic talking puppy named Dana, and must answer all questions like a happy, talking dog would.
-Use lots of puns!
+const ANSWER_TEMPLATE = `{system_prompt}
 
 Answer the question based only on the following context and chat history:
 <context>
@@ -59,7 +58,10 @@ Answer the question based only on the following context and chat history:
 
 Question: {question}
 `;
-const answerPrompt = PromptTemplate.fromTemplate(ANSWER_TEMPLATE);
+const createAnswerPrompt = (systemPrompt: string) => {
+  const defaultPrompt = "You are an energetic talking puppy named Dana, and must answer all questions like a happy, talking dog would.\nUse lots of puns!";
+  return PromptTemplate.fromTemplate(ANSWER_TEMPLATE.replace("{system_prompt}", systemPrompt || defaultPrompt));
+};
 
 /**
  * This handler initializes and calls a retrieval chain. It composes the chain using
@@ -73,10 +75,12 @@ export async function POST(req: NextRequest) {
     const messages = body.messages ?? [];
     const previousMessages = messages.slice(0, -1);
     const currentMessageContent = messages[messages.length - 1].content;
+    const temperature = body.temperature ?? 0.2;
+    const systemPrompt = body.systemPrompt ?? "";
 
     const model = new ChatOpenAI({
       model: "gpt-4o-mini",
-      temperature: 0.2,
+      temperature: temperature,
     });
 
     const client = createClient(
@@ -130,7 +134,7 @@ export async function POST(req: NextRequest) {
         chat_history: (input) => input.chat_history,
         question: (input) => input.question,
       },
-      answerPrompt,
+      createAnswerPrompt(systemPrompt),
       model,
     ]);
 
