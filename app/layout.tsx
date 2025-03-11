@@ -1,6 +1,5 @@
 import "./globals.css";
 import { Public_Sans } from "next/font/google";
-import { ActiveLink } from "@/components/Navbar";
 import { Toaster } from "@/components/ui/sonner";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 
@@ -18,12 +17,12 @@ export default function RootLayout({
         <link rel="shortcut icon" href="/images/favicon.ico" />
         <meta
           name="description"
-          content="Starter template showing how to use LangChain in Next.js projects. See source code and deploy your own at https://github.com/langchain-ai/langchain-nextjs-template!"
+          content="LangChain + Next.js Template"
         />
         <meta property="og:title" content="LangChain + Next.js Template" />
         <meta
           property="og:description"
-          content="Starter template showing how to use LangChain in Next.js projects. See source code and deploy your own at https://github.com/langchain-ai/langchain-nextjs-template!"
+          content="LangChain + Next.js Template"
         />
         <meta property="og:image" content="/images/og-image.png" />
         <meta name="twitter:card" content="summary_large_image" />

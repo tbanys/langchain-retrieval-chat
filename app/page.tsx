@@ -17,7 +17,7 @@ export default function AgentsPage() {
       emptyStateComponent={InfoCard}
       showIngestForm={true}
       placeholder={
-        'I\'ve got a nose for finding the right documents! Ask, "What is a document loader?"'
+        '"What is a document loader?"'
       }
       emoji="🐶"
     />
