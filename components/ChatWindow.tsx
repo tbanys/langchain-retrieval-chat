@@ -24,6 +24,13 @@ import {
 } from "./ui/dialog";
 import { Slider } from "./ui/slider";
 import { cn } from "@/utils/cn";
+import { Download } from "lucide-react"; 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 function ChatMessages(props: {
   messages: Message[];
@@ -554,6 +561,41 @@ export function ChatWindow(props: {
     );
   };
 
+  const downloadChat = (messages: Message[], format: string) => {
+    const timestamp = new Date().toISOString().split('T')[0];
+    let content = '';
+    let filename = `chat-export-${timestamp}`;
+    
+    switch (format) {
+      case 'json':
+        content = JSON.stringify(messages, null, 2);
+        filename += '.json';
+        break;
+      case 'txt':
+        content = messages
+          .map(m => `${m.role}: ${m.content}`)
+          .join('\n\n');
+        filename += '.txt';
+        break;
+      case 'csv':
+        content = 'Role,Content\n' + messages
+          .map(m => `"${m.role}","${m.content.replace(/"/g, '""')}"`)
+          .join('\n');
+        filename += '.csv';
+        break;
+    }
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
   return (
     <ChatLayout
       content={
@@ -586,6 +628,26 @@ export function ChatWindow(props: {
             placeholder={props.placeholder ?? "What's it like to be a pirate?"}
             actions={
               <div className="flex items-center gap-2">
+                {chat.messages.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuItem onClick={() => downloadChat(chat.messages, 'txt')}>
+                        Download as TXT
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => downloadChat(chat.messages, 'json')}>
+                        Download as JSON
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => downloadChat(chat.messages, 'csv')}>
+                        Download as CSV
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 <ApiKeyDialog />
                 <OpenAISettingsDialog />
                 <SystemPromptDialog />
