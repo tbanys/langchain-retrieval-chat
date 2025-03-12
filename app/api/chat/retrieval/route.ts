@@ -75,12 +75,19 @@ export async function POST(req: NextRequest) {
     const messages = body.messages ?? [];
     const previousMessages = messages.slice(0, -1);
     const currentMessageContent = messages[messages.length - 1].content;
+    // Controls randomness: 0 = deterministic responses, 1 = maximum randomness
     const temperature = body.temperature ?? 0.2;
+    // Defines the AI's personality and behavior guidelines
     const systemPrompt = body.systemPrompt ?? "";
+    // The GPT model to use (e.g., gpt-3.5-turbo, gpt-4)
     const modelName = body.model ?? "gpt-4";
+    // Reduces repetition of the same phrases (-2.0 to 2.0, higher = stronger penalty)
     const frequencyPenalty = body.frequencyPenalty ?? 0;
+    // Reduces repetition of overall topics (-2.0 to 2.0, higher = stronger penalty)
     const presencePenalty = body.presencePenalty ?? 0;
+    // Maximum number of tokens (words/characters) in the response
     const maxTokens = body.maxTokens ?? 2048;
+    // User's OpenAI API key for authentication
     const apiKey = body.apiKey; // Get API key from request body
 
     // Check if API key is provided

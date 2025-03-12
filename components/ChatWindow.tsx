@@ -378,6 +378,7 @@ export function ChatWindow(props: {
     const [localPresencePenalty, setLocalPresencePenalty] = useState(presencePenalty);
     const [localMaxTokens, setLocalMaxTokens] = useState(maxTokens);
     const [localTemperature, setLocalTemperature] = useState(temperature);
+    const [showFullDescription, setShowFullDescription] = useState(false)
     
     return (
       <Dialog>
@@ -386,28 +387,62 @@ export function ChatWindow(props: {
             <span>AI Settings</span>
           </Button>
         </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
+        <DialogContent className="max-h-[90vh] flex flex-col">
+          <DialogHeader className="flex-none">
             <DialogTitle>OpenAI Settings</DialogTitle>
             <DialogDescription>
               Configure the AI model parameters to customize its behavior.
             </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Model</label>
-              <select
-                value={localModel}
-                onChange={(e) => setLocalModel(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="gpt-4">GPT-4</option>
-                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-              </select>
+            <div className="flex justify-start">
+              {!showFullDescription ? (
+                <Button
+                  variant="link"
+                  className="p-0 h-auto text-xs"
+                  onClick={() => setShowFullDescription(true)}
+                >
+                  Show usage tips
+                </Button>
+              ) : (
+                <div>
+                  <Button
+                    variant="link"
+                    className="p-0 h-auto text-xs"
+                    onClick={() => setShowFullDescription(false)}
+                  >
+                    Hide usage tips
+                  </Button>
+                  <ul className="mt-2 text-sm text-muted-foreground">
+                    <li>For creative writing: Use higher temperature (0.7-1.0), moderate frequency penalty (0.5-1.5), and low presence penalty</li>
+                    <li>For factual responses: Use lower temperature (0.1-0.4), low frequency penalty, and low presence penalty</li>
+                    <li>For diverse responses: Increase presence penalty to encourage exploration of different topics</li>
+                    <li>For focused responses: Use negative presence penalty to stay on topic</li>
+                    <li>For concise answers: Limit max tokens (e.g., 100-300)</li>
+                    <li>For detailed explanations: Allow more tokens (1000+)</li>
+                  </ul>
+                </div>
+              )}
             </div>
-            
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Temperature</label>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-y-auto">
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Model</label>
+                <select
+                  value={localModel}
+                  onChange={(e) => setLocalModel(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="gpt-4">GPT-4</option>
+                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                </select>
+              </div>
+              
+              <div className="grid gap-2">
+                <div className="flex justify-between">
+                  <label className="text-sm font-medium">Temperature</label>
+                  <span className="text-sm font-medium">{localTemperature.toFixed(1)}</span>
+                </div>
                 <Slider
                   value={[localTemperature]}
                   min={0}
@@ -416,42 +451,57 @@ export function ChatWindow(props: {
                   onValueChange={(value) => setLocalTemperature(value[0])}
                   className="col-span-1"
                 />
-            </div>
-            
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Frequency Penalty</label>
-              <Slider
-                value={[localFrequencyPenalty]}
-                min={0}
-                max={2}
-                step={0.1}
-                onValueChange={(value) => setLocalFrequencyPenalty(value[0])}
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Presence Penalty</label>
-              <Slider
-                value={[localPresencePenalty]}
-                min={0}
-                max={2}
-                step={0.1}
-                onValueChange={(value) => setLocalPresencePenalty(value[0])}
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Max Tokens</label>
-              <Slider
-                value={[localMaxTokens]}
-                min={1}
-                max={4096}
-                step={1}
-                onValueChange={(value) => setLocalMaxTokens(value[0])}
-              />
+                <p className="text-xs text-muted-foreground">Controls randomness: Lower values are more deterministic, higher values are more creative.</p>
+              </div>
+              
+              <div className="grid gap-2">
+                <div className="flex justify-between">
+                  <label className="text-sm font-medium">Frequency Penalty</label>
+                  <span className="text-sm font-medium">{localFrequencyPenalty.toFixed(1)}</span>
+                </div>
+                <Slider
+                  value={[localFrequencyPenalty]}
+                  min={-2.0}
+                  max={2.0}
+                  step={0.1}
+                  onValueChange={(value) => setLocalFrequencyPenalty(value[0])}
+                />
+                <p className="text-xs text-muted-foreground">Reduces repetition of specific phrases.</p>
+              </div>
+              
+              <div className="grid gap-2">
+                <div className="flex justify-between">
+                  <label className="text-sm font-medium">Presence Penalty</label>
+                  <span className="text-sm font-medium">{localPresencePenalty.toFixed(1)}</span>
+                </div>
+                <Slider
+                  value={[localPresencePenalty]}
+                  min={-2.0}
+                  max={2.0}
+                  step={0.1}
+                  onValueChange={(value) => setLocalPresencePenalty(value[0])}
+                />
+                <p className="text-xs text-muted-foreground">Encourages discussing new topics.</p>
+              </div>
+              
+              <div className="grid gap-2">
+                <div className="flex justify-between">
+                  <label className="text-sm font-medium">Max Tokens</label>
+                  <span className="text-sm font-medium">{localMaxTokens}</span>
+                </div>
+                <Slider
+                  value={[localMaxTokens]}
+                  min={1}
+                  max={4096}
+                  step={1}
+                  onValueChange={(value) => setLocalMaxTokens(value[0])}
+                />
+                <p className="text-xs text-muted-foreground">Maximum length of the response (roughly 3/4 words per token).</p>
+              </div>
             </div>
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="flex-none">
             <Button type="submit" onClick={() => {
               setModel(localModel);
               setFrequencyPenalty(localFrequencyPenalty);
@@ -548,7 +598,7 @@ export function ChatWindow(props: {
                   <Button
                     variant="ghost"
                     className="pl-2 pr-3 -ml-2"
-                    disabled={chat.messages.length !== 0}
+                    disabled={chat.messages.length > 1}
                   >
                     <Paperclip className="size-4" />
                     <span>Upload document</span>

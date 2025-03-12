@@ -127,3 +127,32 @@ Check out the [Next.js deployment documentation](https://nextjs.org/docs/deploym
 
 Thanks for reading! If you have any questions or comments, reach out to us on Twitter
 [@LangChainAI](https://twitter.com/langchainai), or [click here to join our Discord server](https://discord.gg/langchain).
+
+
+## OpenAI parameteres
+
+`Frequency Penalty`
+Parameter: frequencyPenalty (range: -2.0 to 2.0)
+
+What it does: Controls how much the model avoids repeating specific phrases or words it has already used in the current response.
+
+Positive values (0.1 to 2.0): Discourage repetition of specific words and phrases
+Zero (0): No special treatment for repeated terms
+Negative values (-2.0 to -0.1): Encourage repetition of words and phrases
+
+`Presence Penalty`
+Parameter: presencePenalty (range: -2.0 to 2.0)
+
+What it does: Controls how much the model avoids discussing topics that have already appeared in the response, focusing on topic diversity rather than specific words.
+
+Positive values: Encourage the model to explore new topics
+Zero (0): No special treatment for previously mentioned topics
+Negative values: Encourage the model to stick to topics already mentioned
+
+## How to Use These Parameters Effectively
+- For creative writing: Use higher temperature (0.7-1.0), moderate frequency penalty (0.5-1.5), and low presence penalty
+- For factual responses: Use lower temperature (0.1-0.4), low frequency penalty, and low presence penalty
+- For diverse responses: Increase presence penalty to encourage exploration of different topics
+- For focused responses: Use negative presence penalty to stay on topic
+- For concise answers: Limit max tokens (e.g., 100-300)
+- For detailed explanations: Allow more tokens (1000+)
