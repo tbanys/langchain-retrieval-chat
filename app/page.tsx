@@ -19,7 +19,7 @@ export default function AgentsPage() {
       placeholder={
         '"What is a document loader?"'
       }
-      emoji="🐶"
+      emoji="🤖"
     />
   );
 }
