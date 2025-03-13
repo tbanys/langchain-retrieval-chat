@@ -14,7 +14,6 @@ export async function GET(
     if (!session?.user?.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-
     const chatHistory = await prisma.chatHistory.findUnique({
       where: {
         id: context.params.id,
@@ -28,11 +27,9 @@ export async function GET(
         }
       }
     });
-
     if (!chatHistory) {
       return NextResponse.json({ message: "Chat history not found" }, { status: 404 });
     }
-
     return NextResponse.json(chatHistory);
   } catch (error) {
     console.error("Error fetching chat history:", error);
@@ -54,7 +51,6 @@ export async function PUT(
     if (!session?.user?.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-
     // Check if the chat history exists and belongs to the user
     const existingChatHistory = await prisma.chatHistory.findUnique({
       where: {
@@ -62,11 +58,9 @@ export async function PUT(
         userId: session.user.id
       }
     });
-
     if (!existingChatHistory) {
       return NextResponse.json({ message: "Chat history not found" }, { status: 404 });
     }
-
     const { title, messages } = await request.json();
     
     // Update chat history
@@ -93,7 +87,6 @@ export async function PUT(
         }
       }
     });
-
     return NextResponse.json(updatedChatHistory);
   } catch (error) {
     console.error("Error updating chat history:", error);
@@ -115,7 +108,6 @@ export async function DELETE(
     if (!session?.user?.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-
     // Check if the chat history exists and belongs to the user
     const existingChatHistory = await prisma.chatHistory.findUnique({
       where: {
@@ -123,18 +115,15 @@ export async function DELETE(
         userId: session.user.id
       }
     });
-
     if (!existingChatHistory) {
       return NextResponse.json({ message: "Chat history not found" }, { status: 404 });
     }
-
     // Delete the chat history
     await prisma.chatHistory.delete({
       where: {
         id: context.params.id
       }
     });
-
     return NextResponse.json({ message: "Chat history deleted successfully" });
   } catch (error) {
     console.error("Error deleting chat history:", error);
