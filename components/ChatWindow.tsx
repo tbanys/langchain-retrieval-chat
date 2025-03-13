@@ -1,18 +1,19 @@
 "use client";
-
 import { type Message } from "ai";
 import { useChat } from "ai/react";
 import { useState, useEffect } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
-
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
 import { IntermediateStep } from "./IntermediateStep";
 import { Button } from "./ui/button";
-import { ArrowDown, LoaderCircle, Paperclip } from "lucide-react";
+import { ArrowDown, LoaderCircle, Paperclip, LogIn } from "lucide-react";
 import { Checkbox } from "./ui/checkbox";
 import { UploadDocumentsForm } from "./UploadDocumentsForm";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -45,7 +46,6 @@ function ChatMessages(props: {
         if (m.role === "system") {
           return <IntermediateStep key={m.id} message={m} />;
         }
-
         const sourceKey = (props.messages.length - 1 - i).toString();
         return (
           <ChatMessageBubble
@@ -77,7 +77,6 @@ export function ChatInput(props: {
       onSubmit={(e) => {
         e.stopPropagation();
         e.preventDefault();
-
         if (props.loading) {
           props.onStop?.();
         } else {
@@ -93,10 +92,8 @@ export function ChatInput(props: {
           onChange={props.onChange}
           className="border-none outline-none bg-transparent p-4"
         />
-
         <div className="flex justify-between ml-4 mr-2 mb-2">
           <div className="flex gap-3">{props.children}</div>
-
           <div className="flex gap-2 self-end">
             {props.actions}
             <Button type="submit" className="self-end" disabled={disabled}>
@@ -118,7 +115,6 @@ export function ChatInput(props: {
 
 function ScrollToBottom(props: { className?: string }) {
   const { isAtBottom, scrollToBottom } = useStickToBottomContext();
-
   if (isAtBottom) return null;
   return (
     <Button
@@ -139,7 +135,6 @@ function StickyToBottomContent(props: {
   contentClassName?: string;
 }) {
   const context = useStickToBottomContext();
-
   // scrollRef will also switch between overflow: unset to overflow: auto
   return (
     <div
@@ -150,7 +145,6 @@ function StickyToBottomContent(props: {
       <div ref={context.contentRef} className={props.contentClassName}>
         {props.content}
       </div>
-
       {props.footer}
     </div>
   );
@@ -181,7 +175,10 @@ export function ChatWindow(props: {
   emoji?: string;
   showIngestForm?: boolean;
   showIntermediateStepsToggle?: boolean;
+  chatId?: string; // Optional chat ID if loading a previous chat
 }) {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [showIntermediateSteps, setShowIntermediateSteps] = useState(
     !!props.showIntermediateStepsToggle,
   );
@@ -189,18 +186,118 @@ export function ChatWindow(props: {
     useState(false);
   const [temperature, setTemperature] = useState(0.8); // Default temperature value
   const [systemPrompt, setSystemPrompt] = useState("You are a helpful AI assistant."); // Default system prompt
-  const [apiKey, setApiKey] = useState(""); // State for storing the OpenAI API key
-  const [isApiKeySet, setIsApiKeySet] = useState(false); // Track if API key has been set
-
   const [sourcesForMessages, setSourcesForMessages] = useState<
     Record<string, any>
   >({});
-
   const [model, setModel] = useState("gpt-4");
   const [frequencyPenalty, setFrequencyPenalty] = useState(0);
   const [presencePenalty, setPresencePenalty] = useState(0);
   const [maxTokens, setMaxTokens] = useState(2048);
+  const [userApiKey, setUserApiKey] = useState("");
+  const [chatTitle, setChatTitle] = useState("New Chat");
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
+  const [currentChatId, setCurrentChatId] = useState<string | undefined>(props.chatId);
+  
+  // Fetch user's API key if logged in
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetchUserApiKey();
+    }
+    
+    // If a chatId is provided, load that chat
+    if (props.chatId) {
+      loadChatHistory(props.chatId);
+    }
+  }, [session, props.chatId]);
 
+  const fetchUserApiKey = async () => {
+    try {
+      const response = await fetch('/api/user/profile');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.apiKey) {
+          setUserApiKey(data.apiKey);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user API key:', error);
+    }
+  };
+  
+  const loadChatHistory = async (chatId: string) => {
+    setIsLoadingChat(true);
+    try {
+      const response = await fetch(`/api/chat/history/${chatId}`);
+      if (response.ok) {
+        const chatData = await response.json();
+        setChatTitle(chatData.title);
+        
+        // Convert messages from the database format to the format expected by useChat
+        const formattedMessages = chatData.messages.map((msg: any) => ({
+          id: msg.id,
+          content: msg.content,
+          role: msg.role,
+        }));
+        
+        // Set the messages in the chat
+        chat.setMessages(formattedMessages);
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+      toast.error('Failed to load chat history');
+    } finally {
+      setIsLoadingChat(false);
+    }
+  };
+  
+  const saveChatToDatabase = async (messages: Message[]) => {
+    // Only save if user is logged in
+    if (!session?.user?.id || messages.length === 0) return;
+    
+    try {
+      // If we're updating an existing chat
+      if (currentChatId) {
+        // Only save the newest message
+        const newestMessage = messages[messages.length - 1];
+        await fetch(`/api/chat/history/${currentChatId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: [newestMessage]
+          }),
+        });
+      } 
+      // If this is a new chat with at least 2 messages (to avoid saving empty chats)
+      else if (messages.length >= 2) {
+        // Generate a title from the first user message
+        const firstUserMessage = messages.find(m => m.role === 'user')?.content || 'New Chat';
+        const title = firstUserMessage.length > 30 
+          ? firstUserMessage.substring(0, 27) + '...' 
+          : firstUserMessage;
+          
+        const response = await fetch('/api/chat/history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title,
+            messages,
+          }),
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          setCurrentChatId(result.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error saving chat:', error);
+    }
+  };
+  
   const chat = useChat({
     api: props.endpoint,
     onResponse(response) {
@@ -208,7 +305,6 @@ export function ChatWindow(props: {
       const sources = sourcesHeader
         ? JSON.parse(Buffer.from(sourcesHeader, "base64").toString("utf8"))
         : [];
-
       const messageIndexHeader = response.headers.get("x-message-index");
       if (sources.length && messageIndexHeader !== null) {
         setSourcesForMessages({
@@ -222,6 +318,10 @@ export function ChatWindow(props: {
       toast.error(`Error while processing your request`, {
         description: e.message,
       }),
+    onFinish: (message) => {
+      // Save the updated chat to the database
+      saveChatToDatabase([...chat.messages]);
+    },
     body: {
       temperature: temperature,
       systemPrompt: systemPrompt,
@@ -229,14 +329,13 @@ export function ChatWindow(props: {
       frequencyPenalty: frequencyPenalty,
       presencePenalty: presencePenalty,
       maxTokens: maxTokens,
-      apiKey: apiKey // Pass the API key to the backend
+      apiKey: userApiKey // Use the user's API key from their profile
     },
   });
 
-
-  // Add a greeting message when API key is set
+  // Add a greeting message when chat is initialized
   useEffect(() => {
-    if (isApiKeySet && chat.messages.length === 0) {
+    if (chat.messages.length === 0 && !isLoadingChat) {
       chat.setMessages([
         {
           id: "greeting",
@@ -245,21 +344,17 @@ export function ChatWindow(props: {
         },
       ]);
     }
-  }, [isApiKeySet, chat]);
-
+  }, [isLoadingChat]);
 
   async function sendMessage(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (chat.isLoading || intermediateStepsLoading) return;
-
     if (!showIntermediateSteps) {
       chat.handleSubmit(e);
       return;
     }
-
     // Some extra work to show intermediate steps properly
     setIntermediateStepsLoading(true);
-
     chat.setInput("");
     const messagesWithUserReply = chat.messages.concat({
       id: chat.messages.length.toString(),
@@ -267,7 +362,6 @@ export function ChatWindow(props: {
       role: "user",
     });
     chat.setMessages(messagesWithUserReply);
-
     const response = await fetch(props.endpoint, {
       method: "POST",
       body: JSON.stringify({
@@ -278,21 +372,19 @@ export function ChatWindow(props: {
         model: model,
         frequencyPenalty: frequencyPenalty,
         presencePenalty: presencePenalty,
-        maxTokens: maxTokens
+        maxTokens: maxTokens,
+        apiKey: userApiKey
       }),
     });
     const json = await response.json();
     setIntermediateStepsLoading(false);
-
     if (!response.ok) {
       toast.error(`Error while processing your request`, {
         description: json.error,
       });
       return;
     }
-
     const responseMessages: Message[] = json.messages;
-
     // Represent intermediate steps as system messages for display purposes
     // TODO: Add proper support for tool messages
     const toolCallMessages = responseMessages.filter(
@@ -304,7 +396,6 @@ export function ChatWindow(props: {
         );
       },
     );
-
     const intermediateStepMessages = [];
     for (let i = 0; i < toolCallMessages.length; i += 2) {
       const aiMessage = toolCallMessages[i];
@@ -318,7 +409,6 @@ export function ChatWindow(props: {
         }),
       });
     }
-
     const newMessages = messagesWithUserReply;
     for (const message of intermediateStepMessages) {
       newMessages.push(message);
@@ -327,20 +417,20 @@ export function ChatWindow(props: {
         setTimeout(resolve, 1000 + Math.random() * 1000),
       );
     }
-
-    chat.setMessages([
+    const finalMessages: Message[] = [
       ...newMessages,
       {
         id: newMessages.length.toString(),
         content: responseMessages[responseMessages.length - 1].content,
-        role: "assistant",
-      },
-    ]);
+        role: "assistant" as const,
+      }
+    ];
+    chat.setMessages(finalMessages);
+    
+    // Save chat to database after completing with intermediate steps
+    saveChatToDatabase(finalMessages);
   }
 
-  // Temperature slider component with popover
-  // This component has been moved into the OpenAISettingsDialog
-  
   // System prompt dialog component
   const SystemPromptDialog = () => {
     const [localSystemPrompt, setLocalSystemPrompt] = useState(systemPrompt);
@@ -377,7 +467,7 @@ export function ChatWindow(props: {
       </Dialog>
     );
   };
-
+  
   // OpenAI Settings dialog component
   const OpenAISettingsDialog = () => {
     const [localModel, setLocalModel] = useState(model);
@@ -507,7 +597,6 @@ export function ChatWindow(props: {
               </div>
             </div>
           </div>
-
           <DialogFooter className="flex-none">
             <Button type="submit" onClick={() => {
               setModel(localModel);
@@ -522,45 +611,7 @@ export function ChatWindow(props: {
       </Dialog>
     );
   };
-
-  // API Key dialog component
-  const ApiKeyDialog = () => {
-    const [localApiKey, setLocalApiKey] = useState(apiKey);
-    
-    return (
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button variant="ghost" className="pl-2 pr-3">
-            <span>{isApiKeySet ? "API Key ✓" : "Set API Key"}</span>
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>OpenAI API Key</DialogTitle>
-            <DialogDescription>
-              Enter your OpenAI API key to use the chat functionality.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <input
-              type="password"
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              placeholder="sk-..."
-              value={localApiKey}
-              onChange={(e) => setLocalApiKey(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button type="submit" onClick={() => {
-              setApiKey(localApiKey);
-              setIsApiKeySet(localApiKey.trim().length > 0);
-            }}>Save API Key</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  };
-
+  
   const downloadChat = (messages: Message[], format: string) => {
     const timestamp = new Date().toISOString().split('T')[0];
     let content = '';
@@ -584,7 +635,6 @@ export function ChatWindow(props: {
         filename += '.csv';
         break;
     }
-
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -596,16 +646,57 @@ export function ChatWindow(props: {
     window.URL.revokeObjectURL(url);
   };
 
+  // Show login prompt for unauthenticated users
+  if (status === 'unauthenticated') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold mb-2">Sign in to use AI Chat</h2>
+          <p className="text-muted-foreground">
+            Create an account to save your chat history and personalize your experience.
+          </p>
+        </div>
+        <div className="flex space-x-4">
+          <Button asChild>
+            <Link href="/register">
+              Create Account
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/login">
+              <LogIn className="mr-2 h-4 w-4" />
+              Sign In
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state while checking authentication
+  if (status === 'loading' || isLoadingChat) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Check if user has set API key
+  const hasApiKey = !!userApiKey;
+
   return (
     <ChatLayout
       content={
-        !isApiKeySet ? (
+        !hasApiKey ? (
           <div className="flex flex-col items-center justify-center h-full">
             <div className="mb-4 text-center">
               <h2 className="text-2xl font-bold">Welcome to the AI Chat</h2>
-              <p className="text-muted-foreground">Please set your OpenAI API key to start chatting</p>
+              <p className="text-muted-foreground">Please set your OpenAI API key in your profile</p>
             </div>
-            <ApiKeyDialog />
+            <Button asChild>
+              <Link href="/profile">Go to Profile Settings</Link>
+            </Button>
           </div>
         ) : chat.messages.length === 0 ? (
           <div>{props.emptyStateComponent}</div>
@@ -619,7 +710,7 @@ export function ChatWindow(props: {
         )
       }
       footer={
-        isApiKeySet ? (
+        hasApiKey ? (
           <ChatInput
             value={chat.input}
             onChange={chat.handleInputChange}
@@ -648,7 +739,6 @@ export function ChatWindow(props: {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
-                <ApiKeyDialog />
                 <OpenAISettingsDialog />
                 <SystemPromptDialog />
               </div>
@@ -694,7 +784,9 @@ export function ChatWindow(props: {
           </ChatInput>
         ) : (
           <div className="flex justify-center pb-4">
-            <ApiKeyDialog />
+            <Button asChild>
+              <Link href="/profile">Set API Key</Link>
+            </Button>
           </div>
         )
       }
