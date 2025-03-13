@@ -1,89 +1,33 @@
-import { getServerSession } from "next-auth/next";
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { authOptions } from "@/lib/auth";
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
-export async function GET(
-  req: Request,
-  { params }: { params: { chatId: string } }
-) {
-  const session = await getServerSession(authOptions);
+export async function GET(req: NextRequest, context: any) {
+  const { params } = context;
   
-  if (!session?.user?.id) {
-    return new NextResponse("Unauthorized", { status: 401 });
+  const session = await getServerSession({ req, res: NextResponse, ...authOptions });
+  
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    const chat = await prisma.chatHistory.findUnique({
+    const chatHistory = await prisma.chatHistory.findUnique({
       where: {
         id: params.chatId,
-        userId: session.user.id
+        userId: session.user.id,
       },
-      include: {
-        messages: {
-          orderBy: {
-            createdAt: 'asc'
-          }
-        }
-      }
+      include: { messages: true },
     });
 
-    if (!chat) {
-      return new NextResponse("Chat not found", { status: 404 });
+    if (!chatHistory) {
+      return NextResponse.json({ error: 'Chat history not found' }, { status: 404 });
     }
 
-    return NextResponse.json(chat);
+    return NextResponse.json(chatHistory);
   } catch (error) {
-    console.error('Error fetching chat:', error);
-    return new NextResponse("Internal Server Error", { status: 500 });
-  }
-}
-
-export async function PUT(
-  req: Request,
-  { params }: { params: { chatId: string } }
-) {
-  const session = await getServerSession(authOptions);
-  
-  if (!session?.user?.id) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
-
-  try {
-    const { messages } = await req.json();
-    const chat = await prisma.chatHistory.findUnique({
-      where: {
-        id: params.chatId,
-        userId: session.user.id
-      }
-    });
-
-    if (!chat) {
-      return new NextResponse("Chat not found", { status: 404 });
-    }
-
-    // Add new messages
-    await prisma.message.createMany({
-      data: messages.map((msg: any) => ({
-        content: msg.content,
-        role: msg.role,
-        chatHistoryId: params.chatId
-      }))
-    });
-
-    // Update chat's updatedAt timestamp
-    await prisma.chatHistory.update({
-      where: {
-        id: params.chatId
-      },
-      data: {
-        updatedAt: new Date()
-      }
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error updating chat:', error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    console.error('Failed to fetch chat history', error);
+    return NextResponse.json({ error: 'Failed to fetch chat history' }, { status: 500 });
   }
 }
