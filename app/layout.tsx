@@ -21,7 +21,7 @@ export default function RootLayout({
       <body>
         <NextAuthProvider>
           <Navbar />
-          <div className="flex flex-col pt-14 min-h-screen">
+          <div className="flex flex-col min-h-screen">
             {children}
           </div>
           <ToastContainer position="bottom-right" />
