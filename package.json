@@ -5,10 +5,11 @@
   "packageManager": "yarn@3.5.1",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && prisma generate",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "format": "prettier --write \"app\""
+    "format": "prettier --write \"app\"",
+    "postinstall": "prisma generate"
   },
   "engines": {
     "node": ">=18"
