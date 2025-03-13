@@ -5,8 +5,8 @@ import { prisma } from "@/lib/prisma";
 
 // Get specific chat history by ID
 export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -17,7 +17,7 @@ export async function GET(
 
     const chatHistory = await prisma.chatHistory.findUnique({
       where: {
-        id: params.id,
+        id: context.params.id,
         userId: session.user.id // Ensure the chat belongs to this user
       },
       include: {
@@ -45,8 +45,8 @@ export async function GET(
 
 // Update a chat history entry
 export async function PUT(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -58,7 +58,7 @@ export async function PUT(
     // Check if the chat history exists and belongs to the user
     const existingChatHistory = await prisma.chatHistory.findUnique({
       where: {
-        id: params.id,
+        id: context.params.id,
         userId: session.user.id
       }
     });
@@ -67,12 +67,12 @@ export async function PUT(
       return NextResponse.json({ message: "Chat history not found" }, { status: 404 });
     }
 
-    const { title, messages } = await req.json();
+    const { title, messages } = await request.json();
     
     // Update chat history
     const updatedChatHistory = await prisma.chatHistory.update({
       where: {
-        id: params.id
+        id: context.params.id
       },
       data: {
         title: title || undefined,
@@ -106,8 +106,8 @@ export async function PUT(
 
 // Delete a chat history entry
 export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  context: { params: { id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -119,7 +119,7 @@ export async function DELETE(
     // Check if the chat history exists and belongs to the user
     const existingChatHistory = await prisma.chatHistory.findUnique({
       where: {
-        id: params.id,
+        id: context.params.id,
         userId: session.user.id
       }
     });
@@ -131,7 +131,7 @@ export async function DELETE(
     // Delete the chat history
     await prisma.chatHistory.delete({
       where: {
-        id: params.id
+        id: context.params.id
       }
     });
 
