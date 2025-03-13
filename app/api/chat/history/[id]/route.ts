@@ -3,11 +3,13 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-// Get specific chat history by ID
-export async function GET(
-  request: NextRequest,
-  context: { params: { id: string } }
-) {
+export type RouteParams = {
+  params: {
+    id: string;
+  }
+}
+
+export async function GET(_req: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions);
     
@@ -16,8 +18,8 @@ export async function GET(
     }
     const chatHistory = await prisma.chatHistory.findUnique({
       where: {
-        id: context.params.id,
-        userId: session.user.id // Ensure the chat belongs to this user
+        id: params.id,
+        userId: session.user.id
       },
       include: {
         messages: {
@@ -40,21 +42,16 @@ export async function GET(
   }
 }
 
-// Update a chat history entry
-export async function PUT(
-  request: NextRequest,
-  context: { params: { id: string } }
-) {
+export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-    // Check if the chat history exists and belongs to the user
     const existingChatHistory = await prisma.chatHistory.findUnique({
       where: {
-        id: context.params.id,
+        id: params.id,
         userId: session.user.id
       }
     });
@@ -63,10 +60,9 @@ export async function PUT(
     }
     const { title, messages } = await request.json();
     
-    // Update chat history
     const updatedChatHistory = await prisma.chatHistory.update({
       where: {
-        id: context.params.id
+        id: params.id
       },
       data: {
         title: title || undefined,
@@ -97,31 +93,25 @@ export async function PUT(
   }
 }
 
-// Delete a chat history entry
-export async function DELETE(
-  request: NextRequest,
-  context: { params: { id: string } }
-) {
+export async function DELETE(_req: NextRequest, { params }: RouteParams) {
   try {
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-    // Check if the chat history exists and belongs to the user
     const existingChatHistory = await prisma.chatHistory.findUnique({
       where: {
-        id: context.params.id,
+        id: params.id,
         userId: session.user.id
       }
     });
     if (!existingChatHistory) {
       return NextResponse.json({ message: "Chat history not found" }, { status: 404 });
     }
-    // Delete the chat history
     await prisma.chatHistory.delete({
       where: {
-        id: context.params.id
+        id: params.id
       }
     });
     return NextResponse.json({ message: "Chat history deleted successfully" });
