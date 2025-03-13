@@ -207,8 +207,9 @@ export function ChatWindow(props: {
       fetchUserApiKey();
     }
 
+    const loadHistory = false;
     // If a chatId is provided, load that chat
-    if (props.chatId) {
+    if (props.chatId && loadHistory) {
       loadChatHistory(props.chatId);
     }
   }, [session, props.chatId]);
