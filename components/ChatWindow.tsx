@@ -156,8 +156,8 @@ export function ChatLayout(props: { content: ReactNode; footer: ReactNode }) {
   return (
     <StickToBottom>
       <StickyToBottomContent
-        className="absolute inset-0"
-        contentClassName="pt-24 px-2"
+        className="absolute inset-0 pt-24"
+        contentClassName="px-2"
         content={props.content}
         footer={
           <div className="sticky bottom-8 px-2">

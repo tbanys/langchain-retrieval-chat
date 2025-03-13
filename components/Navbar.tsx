@@ -29,7 +29,7 @@ export function Navbar() {
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <span className="font-bold inline-block">AI Chat</span>
           </Link>
-          <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
+          {/* <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
             <Link
               href="/"
               className={`transition-colors hover:text-foreground/80 ${
@@ -38,7 +38,7 @@ export function Navbar() {
             >
               Chat
             </Link>
-          </nav>
+          </nav> */}
         </div>
 
         <div className="flex-1"></div>
@@ -48,7 +48,7 @@ export function Navbar() {
             <div className="h-8 w-8 rounded-full bg-muted animate-pulse"></div>
           ) : session?.user ? (
             <>
-              <Button 
+              {/* <Button 
                 variant="ghost" 
                 size="sm" 
                 asChild
@@ -58,7 +58,7 @@ export function Navbar() {
                   <Plus className="h-4 w-4 mr-2" />
                   New Chat
                 </Link>
-              </Button>
+              </Button> */}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
