@@ -1,7 +1,7 @@
 "use client";
 import { type Message } from "ai";
 import { useChat } from "ai/react";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -22,16 +22,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogClose,
 } from "./ui/dialog";
+
 import { Slider } from "./ui/slider";
 import { cn } from "@/utils/cn";
-import { Download } from "lucide-react"; 
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { Download } from "lucide-react";
 
 function ChatMessages(props: {
   messages: Message[];
@@ -197,13 +199,14 @@ export function ChatWindow(props: {
   const [chatTitle, setChatTitle] = useState("New Chat");
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | undefined>(props.chatId);
-  
+  const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+
   // Fetch user's API key if logged in
   useEffect(() => {
     if (session?.user?.id) {
       fetchUserApiKey();
     }
-    
+
     // If a chatId is provided, load that chat
     if (props.chatId) {
       loadChatHistory(props.chatId);
@@ -223,7 +226,7 @@ export function ChatWindow(props: {
       console.error('Error fetching user API key:', error);
     }
   };
-  
+
   const loadChatHistory = async (chatId: string) => {
     setIsLoadingChat(true);
     try {
@@ -231,14 +234,14 @@ export function ChatWindow(props: {
       if (response.ok) {
         const chatData = await response.json();
         setChatTitle(chatData.title);
-        
+
         // Convert messages from the database format to the format expected by useChat
         const formattedMessages = chatData.messages.map((msg: any) => ({
           id: msg.id,
           content: msg.content,
           role: msg.role,
         }));
-        
+
         // Set the messages in the chat
         chat.setMessages(formattedMessages);
       }
@@ -249,11 +252,11 @@ export function ChatWindow(props: {
       setIsLoadingChat(false);
     }
   };
-  
+
   const saveChatToDatabase = async (messages: Message[]) => {
     // Only save if user is logged in
     if (!session?.user?.id || messages.length === 0) return;
-    
+
     try {
       // If we're updating an existing chat
       if (currentChatId) {
@@ -268,15 +271,15 @@ export function ChatWindow(props: {
             messages: [newestMessage]
           }),
         });
-      } 
+      }
       // If this is a new chat with at least 2 messages (to avoid saving empty chats)
       else if (messages.length >= 2) {
         // Generate a title from the first user message
         const firstUserMessage = messages.find(m => m.role === 'user')?.content || 'New Chat';
-        const title = firstUserMessage.length > 30 
-          ? firstUserMessage.substring(0, 27) + '...' 
+        const title = firstUserMessage.length > 30
+          ? firstUserMessage.substring(0, 27) + '...'
           : firstUserMessage;
-          
+
         const response = await fetch('/api/chat/history', {
           method: 'POST',
           headers: {
@@ -287,7 +290,7 @@ export function ChatWindow(props: {
             messages,
           }),
         });
-        
+
         if (response.ok) {
           const result = await response.json();
           setCurrentChatId(result.id);
@@ -297,7 +300,7 @@ export function ChatWindow(props: {
       console.error('Error saving chat:', error);
     }
   };
-  
+
   const chat = useChat({
     api: props.endpoint,
     onResponse(response) {
@@ -426,7 +429,7 @@ export function ChatWindow(props: {
       }
     ];
     chat.setMessages(finalMessages);
-    
+
     // Save chat to database after completing with intermediate steps
     saveChatToDatabase(finalMessages);
   }
@@ -434,7 +437,7 @@ export function ChatWindow(props: {
   // System prompt dialog component
   const SystemPromptDialog = () => {
     const [localSystemPrompt, setLocalSystemPrompt] = useState(systemPrompt);
-    
+
     return (
       <Dialog>
         <DialogTrigger asChild>
@@ -450,7 +453,7 @@ export function ChatWindow(props: {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <textarea 
+            <textarea
               className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               placeholder="Enter system instructions here..."
               value={localSystemPrompt}
@@ -467,7 +470,7 @@ export function ChatWindow(props: {
       </Dialog>
     );
   };
-  
+
   // OpenAI Settings dialog component
   const OpenAISettingsDialog = () => {
     const [localModel, setLocalModel] = useState(model);
@@ -476,7 +479,7 @@ export function ChatWindow(props: {
     const [localMaxTokens, setLocalMaxTokens] = useState(maxTokens);
     const [localTemperature, setLocalTemperature] = useState(temperature);
     const [showFullDescription, setShowFullDescription] = useState(false)
-    
+
     return (
       <Dialog>
         <DialogTrigger asChild>
@@ -520,7 +523,7 @@ export function ChatWindow(props: {
               )}
             </div>
           </DialogHeader>
-          
+
           <div className="flex-1 overflow-y-auto">
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -534,7 +537,7 @@ export function ChatWindow(props: {
                   <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
                 </select>
               </div>
-              
+
               <div className="grid gap-2">
                 <div className="flex justify-between">
                   <label className="text-sm font-medium">Temperature</label>
@@ -550,7 +553,7 @@ export function ChatWindow(props: {
                 />
                 <p className="text-xs text-muted-foreground">Controls randomness: Lower values are more deterministic, higher values are more creative.</p>
               </div>
-              
+
               <div className="grid gap-2">
                 <div className="flex justify-between">
                   <label className="text-sm font-medium">Frequency Penalty</label>
@@ -565,7 +568,7 @@ export function ChatWindow(props: {
                 />
                 <p className="text-xs text-muted-foreground">Reduces repetition of specific phrases.</p>
               </div>
-              
+
               <div className="grid gap-2">
                 <div className="flex justify-between">
                   <label className="text-sm font-medium">Presence Penalty</label>
@@ -580,7 +583,7 @@ export function ChatWindow(props: {
                 />
                 <p className="text-xs text-muted-foreground">Encourages discussing new topics.</p>
               </div>
-              
+
               <div className="grid gap-2">
                 <div className="flex justify-between">
                   <label className="text-sm font-medium">Max Tokens</label>
@@ -611,12 +614,12 @@ export function ChatWindow(props: {
       </Dialog>
     );
   };
-  
+
   const downloadChat = (messages: Message[], format: string) => {
     const timestamp = new Date().toISOString().split('T')[0];
     let content = '';
     let filename = `chat-export-${timestamp}`;
-    
+
     switch (format) {
       case 'json':
         content = JSON.stringify(messages, null, 2);
@@ -644,6 +647,7 @@ export function ChatWindow(props: {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
+    setShowDownloadDialog(false);
   };
 
   // Show login prompt for unauthenticated users
@@ -720,24 +724,44 @@ export function ChatWindow(props: {
             actions={
               <div className="flex items-center gap-2">
                 {chat.messages.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                  <Dialog open={showDownloadDialog} onOpenChange={setShowDownloadDialog}>
+                    <DialogTrigger asChild>
                       <Button variant="ghost" size="icon">
                         <Download className="h-4 w-4" />
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => downloadChat(chat.messages, 'txt')}>
-                        Download as TXT
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => downloadChat(chat.messages, 'json')}>
-                        Download as JSON
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => downloadChat(chat.messages, 'csv')}>
-                        Download as CSV
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Download Chat</DialogTitle>
+                        <DialogDescription>
+                          Choose a format to download your chat history
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex flex-col gap-2 py-4">
+                        <Button
+                          variant="outline"
+                          onClick={() => downloadChat(chat.messages, 'txt')}
+                          className="w-full justify-start"
+                        >
+                          Download as TXT
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => downloadChat(chat.messages, 'json')}
+                          className="w-full justify-start"
+                        >
+                          Download as JSON
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => downloadChat(chat.messages, 'csv')}
+                          className="w-full justify-start"
+                        >
+                          Download as CSV
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 )}
                 <OpenAISettingsDialog />
                 <SystemPromptDialog />
