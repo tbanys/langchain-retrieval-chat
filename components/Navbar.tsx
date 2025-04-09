@@ -36,15 +36,15 @@ export function Navbar() {
                 isActive("/") ? "text-foreground" : "text-foreground/60"
               }`}
             >
-              RAG Chat
+              Data Analysis
             </Link>
             <Link
-              href="/agents"
+              href="/rag-chat"
               className={`transition-colors hover:text-foreground/80 ${
-                isActive("/agents") ? "text-foreground" : "text-foreground/60"
+                isActive("/rag-chat") ? "text-foreground" : "text-foreground/60"
               }`}
             >
-              Agents
+              RAG Chat
             </Link>
           </nav>
         </div>

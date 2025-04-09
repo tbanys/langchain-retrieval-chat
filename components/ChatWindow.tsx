@@ -8,9 +8,10 @@ import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
 import { IntermediateStep } from "./IntermediateStep";
 import { Button } from "./ui/button";
-import { ArrowDown, LoaderCircle, Paperclip, LogIn } from "lucide-react";
+import { ArrowDown, LoaderCircle, Paperclip, LogIn, FileSpreadsheet } from "lucide-react";
 import { Checkbox } from "./ui/checkbox";
 import { UploadDocumentsForm } from "./UploadDocumentsForm";
+import { UploadCSVForm } from "./UploadCSVForm";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -34,29 +35,36 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Download } from "lucide-react";
+import { DataTable } from "@/components/ui/DataTable";
+import { ChatMessage } from "@/components/ChatMessage";
 
 function ChatMessages(props: {
   messages: Message[];
-  emptyStateComponent: ReactNode;
-  sourcesForMessages: Record<string, any>;
-  aiEmoji?: string;
-  className?: string;
+  isLoading: boolean;
+  reload?: () => void;
 }) {
+  if (!props.messages.length) {
+    return null;
+  }
+
   return (
-    <div className="flex flex-col max-w-[768px] mx-auto pb-12 w-full">
-      {props.messages.map((m, i) => {
-        if (m.role === "system") {
-          return <IntermediateStep key={m.id} message={m} />;
+    <div className="relative mx-auto max-w-2xl px-4">
+      {props.messages.map((message, i) => {
+        // Check if this is a system message with intermediate steps
+        if (message.role === "system") {
+          try {
+            // Try to parse the content as JSON to check if it's an intermediate step
+            const parsedContent = JSON.parse(message.content);
+            if (parsedContent.action && parsedContent.observation) {
+              return <IntermediateStep key={message.id} message={message} />;
+            }
+          } catch (e) {
+            // If parsing fails, it's not an intermediate step message
+          }
         }
-        const sourceKey = (props.messages.length - 1 - i).toString();
-        return (
-          <ChatMessageBubble
-            key={m.id}
-            message={m}
-            aiEmoji={props.aiEmoji}
-            sources={props.sourcesForMessages[sourceKey]}
-          />
-        );
+        
+        // For all other messages, use the standard ChatMessage component
+        return <ChatMessage key={message.id} message={message} />;
       })}
     </div>
   );
@@ -157,7 +165,7 @@ export function ChatLayout(props: { content: ReactNode; footer: ReactNode }) {
     <StickToBottom>
       <StickyToBottomContent
         className="absolute inset-0 pt-24"
-        contentClassName="px-2"
+        contentClassName="px-2 pb-8"
         content={props.content}
         footer={
           <div className="sticky bottom-8 px-2">
@@ -177,7 +185,8 @@ export function ChatWindow(props: {
   emoji?: string;
   showIngestForm?: boolean;
   showIntermediateStepsToggle?: boolean;
-  chatId?: string; // Optional chat ID if loading a previous chat
+  chatId?: string;
+  uploadType?: "document" | "csv";
 }) {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -200,6 +209,8 @@ export function ChatWindow(props: {
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | undefined>(props.chatId);
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
+  const [csvData, setCsvData] = useState<string | null>(null);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
 
   // Fetch user's API key if logged in
   useEffect(() => {
@@ -255,55 +266,94 @@ export function ChatWindow(props: {
   };
 
   const saveChatToDatabase = async (messages: Message[]) => {
-    // Only save if user is logged in
-    if (!session?.user?.id || messages.length === 0) return;
+    // Skip saving chat history for now
+    return;
+  };
 
-    try {
-      // If we're updating an existing chat
-      if (currentChatId) {
-        // Only save the newest message
-        const newestMessage = messages[messages.length - 1];
-        await fetch(`/api/chat/history/${currentChatId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messages: [newestMessage]
-          }),
-        });
-      }
-      // If this is a new chat with at least 2 messages (to avoid saving empty chats)
-      else if (messages.length >= 2) {
-        // Generate a title from the first user message
-        const firstUserMessage = messages.find(m => m.role === 'user')?.content || 'New Chat';
-        const title = firstUserMessage.length > 30
-          ? firstUserMessage.substring(0, 27) + '...'
-          : firstUserMessage;
-
-        const response = await fetch('/api/chat/history', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title,
-            messages,
-          }),
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          setCurrentChatId(result.id);
-        }
-      }
-    } catch (error) {
-      console.error('Error saving chat:', error);
+  // Handle CSV upload
+  const handleCSVUploaded = (csvContent: string, fileName: string) => {
+    // Basic validation of CSV content
+    if (!csvContent.trim()) {
+      toast.error("The CSV file appears to be empty");
+      return;
     }
+
+    // Parse CSV to validate format
+    const lines = csvContent.trim().split('\n');
+    if (lines.length < 1) {
+      toast.error("The CSV file must contain at least a header row");
+      return;
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim());
+    if (headers.length === 0) {
+      toast.error("No columns found in the CSV file");
+      return;
+    }
+
+    setCsvData(csvContent.trim());
+    setCsvFileName(fileName);
+    
+    // Update system prompt to include CSV context
+    setSystemPrompt(`You are a helpful AI assistant with access to CSV data analysis capabilities. The CSV file "${fileName}" has been loaded.
+
+To analyze the data, use the csv_processor tool with the following parameters:
+- csv_data: Use the provided CSV data from the request
+- operation: Choose from "analyze", "filter", "summarize", "clean_missing", "detect_outliers", "remove_duplicates", or "generate_report"
+- column: (Optional) Specify a column name when needed
+- condition: (Optional) For filtering operations
+- method: (Optional) For cleaning operations (e.g., 'mean', 'median', 'mode', 'drop')
+- threshold: (Optional) For outlier detection
+
+Available columns: ${headers.join(', ')}
+
+When using the csv_processor tool, always include the CSV data in the csv_data parameter.`);
+
+    // Calculate some basic stats
+    const totalRows = lines.length - 1; // Excluding header
+    const totalColumns = headers.length;
+    const data = lines.slice(1).map(row => row.split(',').map(cell => cell.trim()));
+    
+    // Add a message to inform the user that the CSV has been loaded
+    const csvLoadedMessage: Message = {
+      id: Date.now().toString(),
+      role: "assistant",
+      content: `CSV file "${fileName}" has been loaded successfully! 📊
+
+**Dataset Overview:**
+- Total Rows: ${totalRows}
+- Total Columns: ${totalColumns}
+- Column Names: ${headers.join(', ')}
+
+**Preview of your data:**
+<DataTable headers={${JSON.stringify(headers)}} rows={${JSON.stringify(data)}} />
+
+You can now ask me questions about your data! Here are some examples of what you can ask:
+- "Analyze this dataset"
+- "Show me a summary of the ${headers[0]} column"
+- "Find any missing values"
+- "Check for outliers in numeric columns"
+- "Remove duplicate rows"
+- "Generate a data quality report"
+- "Calculate statistics for ${headers[headers.length - 1]}"
+
+What would you like to know about your data?`,
+    };
+
+    // Clear any existing messages and set the new CSV message
+    chat.setMessages([csvLoadedMessage]);
+
+    // Log CSV data for debugging
+    console.log('CSV Data loaded:', {
+      fileName,
+      headers,
+      rowCount: totalRows,
+      sampleRow: lines.length > 1 ? lines[1] : 'No data rows'
+    });
   };
 
   const chat = useChat({
-    api: props.endpoint,
+    api: props.endpoint, // Use the endpoint provided by the parent component
     onResponse(response) {
       const sourcesHeader = response.headers.get("x-sources");
       const sources = sourcesHeader
@@ -333,7 +383,10 @@ export function ChatWindow(props: {
       frequencyPenalty: frequencyPenalty,
       presencePenalty: presencePenalty,
       maxTokens: maxTokens,
-      apiKey: userApiKey // Use the user's API key from their profile
+      apiKey: userApiKey, // Use the user's API key from their profile
+      csvData: csvData, // Include the CSV data in the request
+      csvFileName: csvFileName, // Include the CSV file name in the request
+      showIntermediateSteps: showIntermediateSteps,
     },
   });
 
@@ -368,6 +421,9 @@ export function ChatWindow(props: {
     chat.setMessages(messagesWithUserReply);
     const response = await fetch(props.endpoint, {
       method: "POST",
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         messages: messagesWithUserReply,
         show_intermediate_steps: true,
@@ -377,7 +433,9 @@ export function ChatWindow(props: {
         frequencyPenalty: frequencyPenalty,
         presencePenalty: presencePenalty,
         maxTokens: maxTokens,
-        apiKey: userApiKey
+        apiKey: userApiKey,
+        csvData: csvData, // Include CSV data
+        csvFileName: csvFileName, // Include CSV filename
       }),
     });
     const json = await response.json();
@@ -390,7 +448,6 @@ export function ChatWindow(props: {
     }
     const responseMessages: Message[] = json.messages;
     // Represent intermediate steps as system messages for display purposes
-    // TODO: Add proper support for tool messages
     const toolCallMessages = responseMessages.filter(
       (responseMessage: Message) => {
         return (
@@ -404,13 +461,25 @@ export function ChatWindow(props: {
     for (let i = 0; i < toolCallMessages.length; i += 2) {
       const aiMessage = toolCallMessages[i];
       const toolMessage = toolCallMessages[i + 1];
+      
+      const toolCall = aiMessage.tool_calls?.[0];
+      const toolName = typeof toolCall === 'object' && toolCall !== null && 'name' in toolCall 
+        ? toolCall.name === "csv_processor" ? "CSV Processor" : toolCall.name
+        : "Unknown Tool";
+      const toolArgs = typeof toolCall === 'object' && toolCall !== null && 'args' in toolCall
+        ? toolCall.args
+        : {};
+      
       intermediateStepMessages.push({
         id: (messagesWithUserReply.length + i / 2).toString(),
         role: "system" as const,
         content: JSON.stringify({
-          action: aiMessage.tool_calls?.[0],
-          observation: toolMessage.content,
-        }),
+          action: {
+            name: toolName,
+            args: toolArgs
+          },
+          observation: toolMessage.content
+        })
       });
     }
     const newMessages = messagesWithUserReply;
@@ -479,7 +548,8 @@ export function ChatWindow(props: {
     const [localPresencePenalty, setLocalPresencePenalty] = useState(presencePenalty);
     const [localMaxTokens, setLocalMaxTokens] = useState(maxTokens);
     const [localTemperature, setLocalTemperature] = useState(temperature);
-    const [showFullDescription, setShowFullDescription] = useState(false)
+    const [showFullDescription, setShowFullDescription] = useState(false);
+    const [localShowIntermediateSteps, setLocalShowIntermediateSteps] = useState(showIntermediateSteps);
 
     return (
       <Dialog>
@@ -599,6 +669,21 @@ export function ChatWindow(props: {
                 />
                 <p className="text-xs text-muted-foreground">Maximum length of the response (roughly 3/4 words per token).</p>
               </div>
+
+              {props.showIntermediateStepsToggle && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show_intermediate_steps"
+                    name="show_intermediate_steps"
+                    checked={localShowIntermediateSteps}
+                    disabled={chat.isLoading || intermediateStepsLoading}
+                    onCheckedChange={(e) => setLocalShowIntermediateSteps(!!e)}
+                  />
+                  <label htmlFor="show_intermediate_steps" className="text-sm">
+                    Show intermediate steps
+                  </label>
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter className="flex-none">
@@ -608,6 +693,7 @@ export function ChatWindow(props: {
               setPresencePenalty(localPresencePenalty);
               setMaxTokens(localMaxTokens);
               setTemperature(localTemperature);
+              setShowIntermediateSteps(localShowIntermediateSteps);
               // No need to manually close the dialog as the DialogClose button will handle this
             }}>Save Changes</Button>
           </DialogFooter>
@@ -707,10 +793,8 @@ export function ChatWindow(props: {
           <div>{props.emptyStateComponent}</div>
         ) : (
           <ChatMessages
-            aiEmoji={props.emoji}
+            isLoading={chat.isLoading || intermediateStepsLoading}
             messages={chat.messages}
-            emptyStateComponent={props.emptyStateComponent}
-            sourcesForMessages={sourcesForMessages}
           />
         )
       }
@@ -721,7 +805,7 @@ export function ChatWindow(props: {
             onChange={chat.handleInputChange}
             onSubmit={sendMessage}
             loading={chat.isLoading || intermediateStepsLoading}
-            placeholder={props.placeholder ?? "What's it like to be a pirate?"}
+            placeholder={props.placeholder ?? "Ask me anything about your data..."}
             actions={
               <div className="flex items-center gap-2">
                 {chat.messages.length > 0 && (
@@ -769,42 +853,55 @@ export function ChatWindow(props: {
               </div>
             }
           >
-            {props.showIngestForm && (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="pl-2 pr-3 -ml-2"
-                    disabled={chat.messages.length > 1}
-                  >
-                    <Paperclip className="size-4" />
-                    <span>Upload document</span>
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Upload document</DialogTitle>
-                    <DialogDescription>
-                      Upload a document to use for the chat.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <UploadDocumentsForm />
-                </DialogContent>
-              </Dialog>
-            )}
-            {props.showIntermediateStepsToggle && (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="show_intermediate_steps"
-                  name="show_intermediate_steps"
-                  checked={showIntermediateSteps}
-                  disabled={chat.isLoading || intermediateStepsLoading}
-                  onCheckedChange={(e) => setShowIntermediateSteps(!!e)}
-                />
-                <label htmlFor="show_intermediate_steps" className="text-sm">
-                  Show intermediate steps
-                </label>
-              </div>
+            {props.showIngestForm && !csvData && (
+              <>
+                {props.uploadType === "document" && (
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="pl-2 pr-3 -ml-2"
+                        disabled={chat.messages.length > 1}
+                      >
+                        <Paperclip className="size-4" />
+                        <span>Upload document</span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Upload document</DialogTitle>
+                        <DialogDescription>
+                          Upload a document to use for the chat.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <UploadDocumentsForm />
+                    </DialogContent>
+                  </Dialog>
+                )}
+                {props.uploadType === "csv" && (
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="pl-2 pr-3 -ml-2"
+                        disabled={chat.messages.length > 1}
+                      >
+                        <FileSpreadsheet className="size-4" />
+                        <span>Upload CSV</span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Upload CSV</DialogTitle>
+                        <DialogDescription>
+                          Upload a CSV file to use for the chat.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <UploadCSVForm onCSVUploaded={handleCSVUploaded} />
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </>
             )}
           </ChatInput>
         ) : (

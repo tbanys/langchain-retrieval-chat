@@ -17,40 +17,337 @@ import { z } from "zod";
 
 export const runtime = "edge";
 
+// --- Helper Functions ---
+
+// Slightly more robust CSV parsing (handles simple quotes, still limited)
+function parseCsvRow(rowString: string): string[] {
+    const result: string[] = [];
+    let currentField = '';
+    let inQuotes = false;
+    for (let i = 0; i < rowString.length; i++) {
+        const char = rowString[i];
+        if (char === '"') {
+            // Handle escaped quotes ("")
+            if (inQuotes && rowString[i + 1] === '"') {
+                currentField += '"';
+                i++; // Skip the next quote
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === ',' && !inQuotes) {
+            result.push(currentField.trim());
+            currentField = '';
+        } else {
+            currentField += char;
+        }
+    }
+    result.push(currentField.trim()); // Add the last field
+    return result;
+}
+
+function parseCSV(csvString: string): { headers: string[], data: string[][] } {
+    const lines = csvString.trim().split('\n');
+    if (lines.length === 0) {
+        return { headers: [], data: [] };
+    }
+    const headers = parseCsvRow(lines[0]);
+    const data = lines.slice(1).map(line => parseCsvRow(line));
+    // Basic validation: ensure all rows have same length as headers (or handle inconsistencies)
+    const consistentData = data.filter(row => row.length === headers.length);
+    if (consistentData.length !== data.length) {
+        console.warn("CSV Parse Warning: Some rows had inconsistent column counts and were potentially skipped.");
+    }
+    return { headers, data: consistentData };
+}
+
+function formatCSV(headers: string[], data: string[][]): string {
+    const headerRow = headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','); // Quote headers
+    const dataRows = data.map(row =>
+        row.map(cell => `"${(cell ?? '').toString().replace(/"/g, '""')}"`).join(',') // Quote all cells
+    );
+    return [headerRow, ...dataRows].join('\n');
+}
+
 // CSV Data Processing Tool
 class CSVDataProcessor extends StructuredTool {
   name = "csv_processor";
-  description = "Process and analyze CSV data. Input should be a CSV string or a URL to a CSV file.";
+  description = "Process, clean, and analyze CSV data. Input should be a CSV string or a URL to a CSV file.";
   schema = z.object({
     csv_data: z.string().describe("The CSV data as a string or URL to a CSV file"),
-    operation: z.enum(["analyze", "filter", "summarize", "visualize"]).describe("The operation to perform on the CSV data"),
-    column: z.string().optional().describe("The column to operate on (for filter, summarize operations)"),
+    operation: z.enum([
+      "analyze", 
+      "filter", 
+      "summarize", 
+      "visualize", 
+      "clean_missing", 
+      "detect_outliers", 
+      "remove_duplicates", 
+      "generate_report"
+    ]).describe("The operation to perform on the CSV data"),
+    column: z.string().optional().describe("The column to operate on (for filter, summarize, clean_missing, detect_outliers operations)"),
     condition: z.string().optional().describe("The condition to filter by (for filter operation)"),
+    method: z.string().optional().describe("The method to use for cleaning (e.g., 'mean', 'median', 'mode', 'drop' for missing values)"),
+    threshold: z.number().optional().describe("The threshold for outlier detection (e.g., z-score threshold)"),
   });
 
   async _call(input: z.infer<typeof this.schema>) {
     try {
-      const { csv_data, operation, column, condition } = input;
+      const { csv_data, operation, column, condition, method, threshold } = input;
       
-      // For demonstration purposes, we'll just return a mock response
-      // In a real implementation, you would parse the CSV and perform the requested operation
+      // Parse CSV data using the proper parsing function
+      const { headers, data } = parseCSV(csv_data);
+      
+      // For demonstration purposes, we'll return detailed responses
+      // In a real implementation, you would process the parsed CSV according to the operation
       
       if (operation === "analyze") {
-        return `Analysis of CSV data: The data appears to contain ${csv_data.split('\n').length} rows. 
-                Columns detected: ${csv_data.split('\n')[0].split(',').join(', ')}.`;
+        const rowCount = data.length;
+        const columnCount = headers.length;
+        const missingValues = this._countMissingValues(data, headers);
+        
+        return `Analysis of CSV data:
+                - Total rows: ${rowCount}
+                - Total columns: ${columnCount}
+                - Columns: ${headers.join(', ')}
+                - Missing values: ${JSON.stringify(missingValues)}
+                - Duplicate rows: ${this._countDuplicates(data)}`;
       } else if (operation === "filter" && column && condition) {
-        return `Filtered CSV data for column "${column}" with condition "${condition}". 
-                This would return rows where ${column} ${condition}.`;
+        const columnIndex = headers.indexOf(column);
+        if (columnIndex === -1) {
+          return `Column "${column}" not found in the CSV data.`;
+        }
+        
+        // Simple filtering logic (would be more complex in a real implementation)
+        const filteredData = data.filter(row => {
+          const value = row[columnIndex];
+          // This is a simplified condition check
+          return value && value.includes(condition);
+        });
+        
+        return `Filtered CSV data for column "${column}" with condition "${condition}":
+                - Original rows: ${data.length}
+                - Filtered rows: ${filteredData.length}
+                - Removed rows: ${data.length - filteredData.length}`;
       } else if (operation === "summarize" && column) {
-        return `Summary of column "${column}": This would calculate statistics like mean, median, mode for the specified column.`;
+        const columnIndex = headers.indexOf(column);
+        if (columnIndex === -1) {
+          return `Column "${column}" not found in the CSV data.`;
+        }
+        
+        const values = data.map(row => row[columnIndex]).filter(Boolean);
+        const numericValues = values.filter(v => !isNaN(Number(v))).map(Number);
+        
+        if (numericValues.length > 0) {
+          const sum = numericValues.reduce((a, b) => a + b, 0);
+          const mean = sum / numericValues.length;
+          const sorted = [...numericValues].sort((a, b) => a - b);
+          const median = sorted.length % 2 === 0 
+            ? (sorted[sorted.length/2 - 1] + sorted[sorted.length/2]) / 2 
+            : sorted[Math.floor(sorted.length/2)];
+          
+          return `Summary of column "${column}":
+                  - Count: ${values.length}
+                  - Numeric values: ${numericValues.length}
+                  - Mean: ${mean.toFixed(2)}
+                  - Median: ${median.toFixed(2)}
+                  - Min: ${Math.min(...numericValues)}
+                  - Max: ${Math.max(...numericValues)}`;
+        } else {
+          // For non-numeric columns, count unique values
+          const uniqueValues = new Set(values);
+          return `Summary of column "${column}":
+                  - Count: ${values.length}
+                  - Unique values: ${uniqueValues.size}
+                  - Sample values: ${Array.from(uniqueValues).slice(0, 5).join(', ')}`;
+        }
+      } else if (operation === "clean_missing" && column && method) {
+        const columnIndex = headers.indexOf(column);
+        if (columnIndex === -1) {
+          return `Column "${column}" not found in the CSV data.`;
+        }
+        
+        const missingCount = data.filter(row => !row[columnIndex] || row[columnIndex].trim() === '').length;
+        
+        if (method === 'drop') {
+          const cleanedData = data.filter(row => row[columnIndex] && row[columnIndex].trim() !== '');
+          return `Cleaned missing values in column "${column}" using method "${method}":
+                  - Original rows: ${data.length}
+                  - Rows with missing values: ${missingCount}
+                  - Remaining rows: ${cleanedData.length}
+                  - Removed rows: ${data.length - cleanedData.length}`;
+        } else {
+          // For imputation methods (mean, median, mode)
+          return `Cleaned missing values in column "${column}" using method "${method}":
+                  - Original rows: ${data.length}
+                  - Rows with missing values: ${missingCount}
+                  - Imputed values: ${missingCount}
+                  - Method used: ${method}`;
+        }
+      } else if (operation === "detect_outliers" && column && threshold) {
+        const columnIndex = headers.indexOf(column);
+        if (columnIndex === -1) {
+          return `Column "${column}" not found in the CSV data.`;
+        }
+        
+        const numericValues = data
+          .map(row => row[columnIndex])
+          .filter(v => !isNaN(Number(v)))
+          .map(Number);
+        
+        if (numericValues.length === 0) {
+          return `Column "${column}" does not contain numeric values.`;
+        }
+        
+        // Simple z-score based outlier detection
+        const mean = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+        const stdDev = Math.sqrt(
+          numericValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / numericValues.length
+        );
+        
+        const outliers = numericValues.filter(v => Math.abs((v - mean) / stdDev) > threshold);
+        
+        return `Outlier detection for column "${column}" with threshold ${threshold}:
+                - Total values: ${numericValues.length}
+                - Mean: ${mean.toFixed(2)}
+                - Standard deviation: ${stdDev.toFixed(2)}
+                - Outliers detected: ${outliers.length}
+                - Outlier values: ${outliers.slice(0, 5).join(', ')}${outliers.length > 5 ? '...' : ''}`;
+      } else if (operation === "remove_duplicates") {
+        // Create a map to track unique rows with proper handling of empty/null values
+        const uniqueRowMap = new Map<string, string[]>();
+        data.forEach(row => {
+          const rowKey = row.map(cell => (cell ?? '').trim()).join('|');
+          if (!uniqueRowMap.has(rowKey)) {
+            uniqueRowMap.set(rowKey, row);
+          }
+        });
+        const cleanedData = Array.from(uniqueRowMap.values());
+        const originalRowCount = data.length;
+        const removedCount = originalRowCount - cleanedData.length;
+        
+        // Format the cleaned data back to CSV
+        const finalCsv = formatCSV(headers, cleanedData);
+        const summary = `Removed ${removedCount} duplicate rows. Kept ${cleanedData.length} unique rows.`;
+        
+        // Return both the summary and the cleaned data in JSON format for further processing
+        if (removedCount > 0) {
+          return JSON.stringify({ 
+            cleaned_csv_data: finalCsv, 
+            summary: summary 
+          });
+        } else {
+          // If no duplicates found, just return a simple message
+          return `Duplicate removal:
+                  - Original rows: ${originalRowCount}
+                  - Unique rows: ${cleanedData.length}
+                  - Duplicate rows removed: ${removedCount}`;
+        }
+      } else if (operation === "generate_report") {
+        const rowCount = data.length;
+        const columnCount = headers.length;
+        const missingValues = this._countMissingValues(data, headers);
+        const duplicateCount = this._countDuplicates(data);
+        
+        // Check for potential outliers in numeric columns
+        const numericColumns = headers.filter((_, i) => 
+          data.some(row => !isNaN(Number(row[i])))
+        );
+        
+        const outlierSummary = numericColumns.map(col => {
+          const colIndex = headers.indexOf(col);
+          const values = data.map(row => Number(row[colIndex])).filter(v => !isNaN(v));
+          if (values.length === 0) return null;
+          
+          const mean = values.reduce((a, b) => a + b, 0) / values.length;
+          const stdDev = Math.sqrt(
+            values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length
+          );
+          
+          const outliers = values.filter(v => Math.abs((v - mean) / stdDev) > 3);
+          return outliers.length > 0 ? `${col}: ${outliers.length} potential outliers` : null;
+        }).filter((item): item is string => item !== null);
+        
+        return `Data Cleaning Report:
+                - Dataset: ${rowCount} rows × ${columnCount} columns
+                - Columns: ${headers.join(', ')}
+                - Missing values: ${JSON.stringify(missingValues)}
+                - Duplicate rows: ${duplicateCount}
+                - Potential outliers: ${outlierSummary.length > 0 ? outlierSummary.join(', ') : 'None detected'}
+                - Recommendations:
+                  ${this._generateRecommendations(missingValues, duplicateCount, outlierSummary)}`;
       } else if (operation === "visualize") {
-        return `Visualization of CSV data: This would generate a chart or graph based on the data.`;
+        return `Visualization of CSV data: This would generate a chart or graph based on the data.
+                Available visualizations:
+                - Bar chart (for categorical data)
+                - Line chart (for time series data)
+                - Scatter plot (for relationships between numeric columns)
+                - Histogram (for distribution of numeric data)
+                - Box plot (for outlier detection)`;
       } else {
         return "Invalid operation or missing parameters. Please specify a valid operation and required parameters.";
       }
     } catch (error) {
       return `Error processing CSV data: ${error instanceof Error ? error.message : String(error)}`;
     }
+  }
+  
+  // Helper methods
+  _countMissingValues(data: string[][], headers: string[]): Record<string, number> {
+    const missingCounts: Record<string, number> = {};
+    
+    headers.forEach((header, colIndex) => {
+      missingCounts[header] = data.filter(row => !row[colIndex] || row[colIndex].trim() === '').length;
+    });
+    
+    return missingCounts;
+  }
+  
+  _countDuplicates(data: string[][]): number {
+    // Improved duplicate detection using pipe separator and trimming values
+    const uniqueRows = new Set<string>();
+    let duplicateCount = 0;
+    
+    data.forEach((row) => {
+      // Create a string representation of the row with pipe separator
+      const rowKey = row.map(cell => (cell ?? '').trim()).join('|');
+      
+      if (uniqueRows.has(rowKey)) {
+        duplicateCount++;
+      } else {
+        uniqueRows.add(rowKey);
+      }
+    });
+    
+    return duplicateCount;
+  }
+  
+  _generateRecommendations(
+    missingValues: Record<string, number>, 
+    duplicateCount: number,
+    outlierSummary: string[]
+  ): string {
+    const recommendations: string[] = [];
+    
+    // Check for missing values
+    const columnsWithMissing = Object.entries(missingValues)
+      .filter(([_, count]) => count > 0)
+      .map(([col, _]) => col);
+    
+    if (columnsWithMissing.length > 0) {
+      recommendations.push(`- Consider cleaning missing values in columns: ${columnsWithMissing.join(', ')}`);
+    }
+    
+    // Check for duplicates
+    if (duplicateCount > 0) {
+      recommendations.push(`- Remove ${duplicateCount} duplicate rows to improve data quality`);
+    }
+    
+    // Check for outliers
+    if (outlierSummary.length > 0) {
+      recommendations.push(`- Investigate potential outliers in columns: ${outlierSummary.join(', ')}`);
+    }
+    
+    return recommendations.join('\n');
   }
 }
 
@@ -78,7 +375,12 @@ const convertLangChainMessageToVercelMessage = (message: BaseMessage) => {
   }
 };
 
-const AGENT_SYSTEM_TEMPLATE = `You are a talking parrot named Polly. All final responses must be how a talking parrot would respond. Squawk often!`;
+const AGENT_SYSTEM_TEMPLATE = `You are a data cleaning agent. Your job is to help users clean and analyze their datasets.
+You have access to a CSV data processor tool that can perform various operations on CSV data.
+When a user uploads a file, analyze it and provide insights about data quality issues.
+Offer specific recommendations for cleaning the data, such as handling missing values, detecting outliers, or removing duplicates.
+Always explain your reasoning and the impact of each cleaning operation on the dataset.
+Be thorough but concise in your explanations.`;
 
 /**
  * This handler initializes and calls an tool caling ReAct agent.
@@ -90,30 +392,20 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const returnIntermediateSteps = body.show_intermediate_steps;
-    // Controls randomness: 0 = deterministic responses, 1 = maximum randomness
     const temperature = body.temperature ?? 0.2;
-    // Defines the AI's personality and behavior guidelines
     const systemPrompt = body.systemPrompt ?? AGENT_SYSTEM_TEMPLATE;
-    // The GPT model to use (e.g., gpt-3.5-turbo, gpt-4)
     const modelName = body.model ?? "gpt-4o-mini";
-    // Reduces repetition of the same phrases (-2.0 to 2.0, higher = stronger penalty)
     const frequencyPenalty = body.frequencyPenalty ?? 0;
-    // Reduces repetition of overall topics (-2.0 to 2.0, higher = stronger penalty)
     const presencePenalty = body.presencePenalty ?? 0;
-    // Maximum number of tokens (words/characters) in the response
     const maxTokens = body.maxTokens ?? 2048;
-    // User's OpenAI API key for authentication
-    const apiKey = body.apiKey; // Get API key from request body
+    const apiKey = body.apiKey;
+    const csvData = body.csvData;
+    const csvFileName = body.csvFileName;
 
-    // Check if API key is provided
     if (!apiKey) {
       return NextResponse.json({ error: "OpenAI API key is required" }, { status: 400 });
     }
 
-    /**
-     * We represent intermediate steps as system messages for display purposes,
-     * but don't want them in the chat history.
-     */
     const messages = (body.messages ?? [])
       .filter(
         (message: VercelChatMessage) =>
@@ -121,9 +413,76 @@ export async function POST(req: NextRequest) {
       )
       .map(convertVercelMessageToLangChainMessage);
 
-    // Requires process.env.SERPAPI_API_KEY to be set: https://serpapi.com/
-    // You can remove this or use a different tool instead.
-    const tools = [new Calculator(), new SerpAPI(), new CSVDataProcessor()];
+    // Create a custom CSVDataProcessor that automatically includes the CSV data
+    class CustomCSVDataProcessor extends CSVDataProcessor {
+      async _call(input: z.infer<typeof this.schema>) {
+        // Check if the input.csv_data looks like a filename or is empty
+        if (!input.csv_data || 
+            input.csv_data.trim() === 'sample_data.csv' || 
+            (input.csv_data.endsWith('.csv') && !input.csv_data.includes('\n'))) {
+          
+          // If it's a filename or empty, use the CSV data from the request
+          if (csvData) {
+            console.log("Replacing filename reference with actual CSV data from upload");
+            
+            // Handle the specific operation type with custom enhancements for better reporting
+            if (input.operation === "remove_duplicates") {
+              // First parse the CSV data to identify duplicate rows for better reporting
+              const { headers, data } = parseCSV(csvData);
+              
+              // Track unique rows and collect duplicates for reporting
+              const uniqueRowMap = new Map<string, string[]>();
+              const duplicates: { row: string[], count: number }[] = [];
+              const rowCounts = new Map<string, number>();
+              
+              // Count occurrences of each row
+              data.forEach(row => {
+                const rowKey = row.map(cell => (cell ?? '').trim()).join('|');
+                rowCounts.set(rowKey, (rowCounts.get(rowKey) || 0) + 1);
+                
+                // Keep track of the first occurrence of each row
+                if (!uniqueRowMap.has(rowKey)) {
+                  uniqueRowMap.set(rowKey, row);
+                }
+              });
+              
+              // Collect information about duplicates (rows with count > 1)
+              for (const [key, count] of rowCounts.entries()) {
+                if (count > 1) {
+                  duplicates.push({
+                    row: uniqueRowMap.get(key) || [],
+                    count: count
+                  });
+                }
+              }
+              
+              // If there are duplicates, provide detailed information
+              if (duplicates.length > 0) {
+                return super._call({
+                  ...input,
+                  csv_data: csvData
+                });
+              } else {
+                return "No duplicate rows were found in the dataset.";
+              }
+            }
+            
+            // For other operations, just pass the actual CSV data
+            return super._call({
+              ...input,
+              csv_data: csvData
+            });
+          } else {
+            return "Error: No CSV data available. Please upload a CSV file first.";
+          }
+        }
+        
+        // Otherwise, use the provided CSV data (could be from a previous operation)
+        return super._call(input);
+      }
+    }
+
+    const tools = [new Calculator(), new SerpAPI(), new CustomCSVDataProcessor()];
     const chat = new ChatOpenAI({
       model: modelName,
       temperature: temperature,

@@ -8,6 +8,7 @@ export function IntermediateStep(props: { message: Message }) {
   const action = parsedInput.action;
   const observation = parsedInput.observation;
   const [expanded, setExpanded] = useState(false);
+  
   return (
     <div className="mr-auto bg-secondary border border-input rounded p-3 max-w-[80%] mb-8 whitespace-pre-wrap flex flex-col">
       <button
@@ -36,12 +37,12 @@ export function IntermediateStep(props: { message: Message }) {
       >
         <div
           className={cn(
-            "rounded",
+            "rounded text-white",
             expanded ? "max-w-full" : "transition-[max-width] delay-100",
           )}
         >
           Input:{" "}
-          <code className="max-h-[100px] overflow-auto">
+          <code className="max-h-[100px] overflow-auto text-white">
             {JSON.stringify(action.args)}
           </code>
         </div>

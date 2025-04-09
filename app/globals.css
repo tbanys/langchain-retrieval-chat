@@ -64,11 +64,31 @@
   }
 
   code {
-    @apply dark:text-secondary text-secondary-foreground bg-muted px-1.5 py-0.5 rounded;
+    @apply dark:text-white text-secondary-foreground bg-muted px-1.5 py-0.5 rounded;
   }
 
   li {
     padding: 4px;
+  }
+
+  table {
+    @apply w-full border-collapse my-4;
+  }
+
+  thead {
+    @apply bg-muted;
+  }
+
+  th {
+    @apply text-left p-3 font-semibold border border-border;
+  }
+
+  td {
+    @apply p-3 border border-border;
+  }
+
+  tr:nth-child(even) {
+    @apply bg-muted/50;
   }
 
   .hide-scrollbar::-webkit-scrollbar {
