@@ -29,16 +29,24 @@ export function Navbar() {
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <span className="font-bold inline-block">AI Chat</span>
           </Link>
-          {/* <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
+          <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
             <Link
               href="/"
               className={`transition-colors hover:text-foreground/80 ${
                 isActive("/") ? "text-foreground" : "text-foreground/60"
               }`}
             >
-              Chat
+              RAG Chat
             </Link>
-          </nav> */}
+            <Link
+              href="/agents"
+              className={`transition-colors hover:text-foreground/80 ${
+                isActive("/agents") ? "text-foreground" : "text-foreground/60"
+              }`}
+            >
+              Agents
+            </Link>
+          </nav>
         </div>
 
         <div className="flex-1"></div>
