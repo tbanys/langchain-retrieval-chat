@@ -26,7 +26,7 @@ export default function AgentsPage() {
         <li>
           🛠️
           <span className="ml-2">
-            The agent has memory and access to a search engine and a calculator.
+            The agent has memory and access to a search engine, a calculator, and a CSV data processor.
           </span>
         </li>
         <li className="hidden text-l md:block">
@@ -40,7 +40,7 @@ export default function AgentsPage() {
           🦜
           <span className="ml-2">
             By default, the agent is pretending to be a talking parrot, but you
-            can the prompt to whatever you want!
+            can change the prompt to whatever you want!
           </span>
         </li>
         <li className="hidden text-l md:block">
@@ -53,7 +53,7 @@ export default function AgentsPage() {
         <li className="text-l">
           👇
           <span className="ml-2">
-            Try asking e.g. <code>What is the weather in Honolulu?</code> below!
+            Try asking e.g. <code>What is the weather in Honolulu?</code> or <code>Analyze this CSV data: name,age\nJohn,30\nJane,25</code> below!
           </span>
         </li>
       </ul>

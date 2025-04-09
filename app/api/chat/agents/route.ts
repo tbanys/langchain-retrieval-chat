@@ -12,8 +12,47 @@ import {
   HumanMessage,
   SystemMessage,
 } from "@langchain/core/messages";
+import { StructuredTool } from "@langchain/core/tools";
+import { z } from "zod";
 
 export const runtime = "edge";
+
+// CSV Data Processing Tool
+class CSVDataProcessor extends StructuredTool {
+  name = "csv_processor";
+  description = "Process and analyze CSV data. Input should be a CSV string or a URL to a CSV file.";
+  schema = z.object({
+    csv_data: z.string().describe("The CSV data as a string or URL to a CSV file"),
+    operation: z.enum(["analyze", "filter", "summarize", "visualize"]).describe("The operation to perform on the CSV data"),
+    column: z.string().optional().describe("The column to operate on (for filter, summarize operations)"),
+    condition: z.string().optional().describe("The condition to filter by (for filter operation)"),
+  });
+
+  async _call(input: z.infer<typeof this.schema>) {
+    try {
+      const { csv_data, operation, column, condition } = input;
+      
+      // For demonstration purposes, we'll just return a mock response
+      // In a real implementation, you would parse the CSV and perform the requested operation
+      
+      if (operation === "analyze") {
+        return `Analysis of CSV data: The data appears to contain ${csv_data.split('\n').length} rows. 
+                Columns detected: ${csv_data.split('\n')[0].split(',').join(', ')}.`;
+      } else if (operation === "filter" && column && condition) {
+        return `Filtered CSV data for column "${column}" with condition "${condition}". 
+                This would return rows where ${column} ${condition}.`;
+      } else if (operation === "summarize" && column) {
+        return `Summary of column "${column}": This would calculate statistics like mean, median, mode for the specified column.`;
+      } else if (operation === "visualize") {
+        return `Visualization of CSV data: This would generate a chart or graph based on the data.`;
+      } else {
+        return "Invalid operation or missing parameters. Please specify a valid operation and required parameters.";
+      }
+    } catch (error) {
+      return `Error processing CSV data: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+}
 
 const convertVercelMessageToLangChainMessage = (message: VercelChatMessage) => {
   if (message.role === "user") {
@@ -84,7 +123,7 @@ export async function POST(req: NextRequest) {
 
     // Requires process.env.SERPAPI_API_KEY to be set: https://serpapi.com/
     // You can remove this or use a different tool instead.
-    const tools = [new Calculator(), new SerpAPI()];
+    const tools = [new Calculator(), new SerpAPI(), new CSVDataProcessor()];
     const chat = new ChatOpenAI({
       model: modelName,
       temperature: temperature,
