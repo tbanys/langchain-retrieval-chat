@@ -272,13 +272,29 @@ export function ChatWindow(props: {
 
   // Handle CSV upload
   const handleCSVUploaded = (csvContent: string, fileName: string) => {
-    // Basic validation of CSV content
+    // File type validation
+    const allowedExtensions = ['.csv', '.txt'];
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+    if (!allowedExtensions.includes(fileExtension)) {
+      toast.error("Invalid file type. Only CSV files are allowed");
+      return;
+    }
+    
+    // Size validation - rough estimate based on string length
+    const fileSizeInMB = csvContent.length / (1024 * 1024);
+    const maxSizeInMB = 10; // 10MB limit
+    if (fileSizeInMB > maxSizeInMB) {
+      toast.error(`File too large (${fileSizeInMB.toFixed(2)}MB). Maximum size is ${maxSizeInMB}MB`);
+      return;
+    }
+
+    // Basic content validation
     if (!csvContent.trim()) {
       toast.error("The CSV file appears to be empty");
       return;
     }
 
-    // Parse CSV to validate format
+    // CSV structure validation
     const lines = csvContent.trim().split('\n');
     if (lines.length < 1) {
       toast.error("The CSV file must contain at least a header row");
@@ -288,6 +304,59 @@ export function ChatWindow(props: {
     const headers = lines[0].split(',').map(h => h.trim());
     if (headers.length === 0) {
       toast.error("No columns found in the CSV file");
+      return;
+    }
+    
+    // Check for reasonable number of columns (to prevent DOS)
+    if (headers.length > 500) {
+      toast.error("Too many columns in the CSV file (max: 500)");
+      return;
+    }
+    
+    // Check for reasonable number of rows (to prevent DOS)
+    if (lines.length > 100000) {
+      toast.error("Too many rows in the CSV file (max: 100,000)");
+      return;
+    }
+    
+    // Validate data consistency
+    const columnCount = headers.length;
+    let malformedRows = 0;
+    
+    // Check a sample of rows for consistent column counts
+    const sampleSize = Math.min(100, lines.length - 1);
+    for (let i = 1; i <= sampleSize; i++) {
+      const row = lines[i].split(',');
+      if (row.length !== columnCount) {
+        malformedRows++;
+      }
+    }
+    
+    if (malformedRows > sampleSize * 0.1) { // If more than 10% of sample rows are malformed
+      toast.error("CSV file has inconsistent column counts across rows");
+      return;
+    }
+    
+    // Content safety check (basic)
+    const sensitivePatterns = [
+      /<script/i,
+      /javascript:/i,
+      /eval\(/i,
+      /onerror=/i,
+      /<%.*%>/i, // Template injection patterns
+      /\$/i // SQL injection basic check
+    ];
+    
+    let containsSuspiciousContent = false;
+    for (const pattern of sensitivePatterns) {
+      if (pattern.test(csvContent)) {
+        containsSuspiciousContent = true;
+        break;
+      }
+    }
+    
+    if (containsSuspiciousContent) {
+      toast.error("The file contains potentially unsafe content");
       return;
     }
 

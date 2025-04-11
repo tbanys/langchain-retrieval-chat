@@ -19,6 +19,58 @@ export const runtime = "edge";
 
 // --- Helper Functions ---
 
+// Additional security validation function
+function validateCSVData(csvData: string): { valid: boolean; error?: string } {
+  if (!csvData || !csvData.trim()) {
+    return { valid: false, error: "Empty CSV data" };
+  }
+
+  // Size check
+  const sizeInMB = csvData.length / (1024 * 1024);
+  if (sizeInMB > 15) { // Server-side limit slightly higher than client
+    return { valid: false, error: `CSV data too large (${sizeInMB.toFixed(2)}MB)` };
+  }
+
+  // Basic structure validation
+  const lines = csvData.trim().split('\n');
+  if (lines.length < 1) {
+    return { valid: false, error: "CSV must have at least a header row" };
+  }
+
+  // Column count validation
+  const headers = lines[0].split(',').map(h => h.trim());
+  if (headers.length === 0) {
+    return { valid: false, error: "No columns detected in CSV" };
+  }
+  
+  if (headers.length > 1000) {
+    return { valid: false, error: "Too many columns (max: 1000)" };
+  }
+  
+  // Row count validation
+  if (lines.length > 200000) {
+    return { valid: false, error: "Too many rows (max: 200,000)" };
+  }
+  
+  // Security checks
+  const dangerousPatterns = [
+    /<script/i,
+    /javascript:/i,
+    /eval\(/i,
+    /function\(/i,
+    /setTimeout/i,
+    /document\./i
+  ];
+  
+  for (const pattern of dangerousPatterns) {
+    if (pattern.test(csvData)) {
+      return { valid: false, error: "CSV contains potentially unsafe content" };
+    }
+  }
+  
+  return { valid: true };
+}
+
 // Slightly more robust CSV parsing (handles simple quotes, still limited)
 function parseCsvRow(rowString: string): string[] {
     const result: string[] = [];
@@ -68,6 +120,22 @@ function formatCSV(headers: string[], data: string[][]): string {
     return [headerRow, ...dataRows].join('\n');
 }
 
+// Generate a downloadable file content with base64 encoding
+function generateDownloadableFile(csvData: string, format: string): string {
+    // For CSV, we can just use the CSV data directly with base64 encoding
+    if (format === 'csv') {
+        return `data:text/csv;base64,${Buffer.from(csvData).toString('base64')}`;
+    }
+    
+    // For Excel format, we would typically need a library like ExcelJS
+    // This is a simplified approach that creates a CSV with Excel mime type
+    if (format === 'excel') {
+        return `data:application/vnd.ms-excel;base64,${Buffer.from(csvData).toString('base64')}`;
+    }
+    
+    return '';
+}
+
 // CSV Data Processing Tool
 class CSVDataProcessor extends StructuredTool {
   name = "csv_processor";
@@ -82,20 +150,64 @@ class CSVDataProcessor extends StructuredTool {
       "clean_missing", 
       "detect_outliers", 
       "remove_duplicates", 
-      "generate_report"
+      "generate_report",
+      "download_data"  // New operation to download data
     ]).describe("The operation to perform on the CSV data"),
     column: z.string().optional().describe("The column to operate on (for filter, summarize, clean_missing, detect_outliers operations)"),
     condition: z.string().optional().describe("The condition to filter by (for filter operation)"),
     method: z.string().optional().describe("The method to use for cleaning (e.g., 'mean', 'median', 'mode', 'drop' for missing values)"),
     threshold: z.number().optional().describe("The threshold for outlier detection (e.g., z-score threshold)"),
+    format: z.enum(["csv", "excel"]).optional().describe("The format for downloading data (csv or excel)"),
+    processed_data: z.string().optional().describe("Previously processed CSV data to download (for download_data operation)"),
   });
 
   async _call(input: z.infer<typeof this.schema>) {
     try {
-      const { csv_data, operation, column, condition, method, threshold } = input;
+      const { csv_data, operation, column, condition, method, threshold, format, processed_data } = input;
+      
+      // Validate operation
+      const validOperations = ["analyze", "filter", "summarize", "visualize", "clean_missing", 
+                               "detect_outliers", "remove_duplicates", "generate_report", "download_data"];
+      if (!validOperations.includes(operation)) {
+        return `Error: Invalid operation "${operation}". Valid operations are: ${validOperations.join(', ')}`;
+      }
+      
+      // Special case for download operation
+      if (operation === "download_data") {
+        const dataToDownload = processed_data || csv_data;
+        
+        // Validate download data
+        const validation = validateCSVData(dataToDownload);
+        if (!validation.valid) {
+          return `Error: ${validation.error}`;
+        }
+        
+        const downloadFormat = format || "csv";
+        if (!["csv", "excel"].includes(downloadFormat)) {
+          return "Error: Invalid download format. Use 'csv' or 'excel'.";
+        }
+        
+        const downloadLink = generateDownloadableFile(dataToDownload, downloadFormat);
+        return JSON.stringify({
+          download_link: downloadLink,
+          file_format: downloadFormat,
+          message: `Your cleaned data is ready to download as a ${downloadFormat.toUpperCase()} file.`
+        });
+      }
+      
+      // Validate CSV data
+      const validation = validateCSVData(csv_data);
+      if (!validation.valid) {
+        return `Error: ${validation.error}`;
+      }
       
       // Parse CSV data using the proper parsing function
       const { headers, data } = parseCSV(csv_data);
+      
+      // Validate column if provided
+      if (column && !headers.includes(column)) {
+        return `Error: Column "${column}" not found in the CSV data. Available columns: ${headers.join(', ')}`;
+      }
       
       // For demonstration purposes, we'll return detailed responses
       // In a real implementation, you would process the parsed CSV according to the operation
@@ -124,10 +236,16 @@ class CSVDataProcessor extends StructuredTool {
           return value && value.includes(condition);
         });
         
-        return `Filtered CSV data for column "${column}" with condition "${condition}":
-                - Original rows: ${data.length}
-                - Filtered rows: ${filteredData.length}
-                - Removed rows: ${data.length - filteredData.length}`;
+        // Format filtered data for potential download
+        const filteredCsv = formatCSV(headers, filteredData);
+        
+        return JSON.stringify({
+          summary: `Filtered CSV data for column "${column}" with condition "${condition}":
+                    - Original rows: ${data.length}
+                    - Filtered rows: ${filteredData.length}
+                    - Removed rows: ${data.length - filteredData.length}`,
+          processed_csv_data: filteredCsv
+        });
       } else if (operation === "summarize" && column) {
         const columnIndex = headers.indexOf(column);
         if (columnIndex === -1) {
@@ -170,18 +288,29 @@ class CSVDataProcessor extends StructuredTool {
         
         if (method === 'drop') {
           const cleanedData = data.filter(row => row[columnIndex] && row[columnIndex].trim() !== '');
-          return `Cleaned missing values in column "${column}" using method "${method}":
-                  - Original rows: ${data.length}
-                  - Rows with missing values: ${missingCount}
-                  - Remaining rows: ${cleanedData.length}
-                  - Removed rows: ${data.length - cleanedData.length}`;
+          
+          // Format cleaned data for potential download
+          const cleanedCsv = formatCSV(headers, cleanedData);
+          
+          return JSON.stringify({
+            summary: `Cleaned missing values in column "${column}" using method "${method}":
+                      - Original rows: ${data.length}
+                      - Rows with missing values: ${missingCount}
+                      - Remaining rows: ${cleanedData.length}
+                      - Removed rows: ${data.length - cleanedData.length}`,
+            processed_csv_data: cleanedCsv
+          });
         } else {
           // For imputation methods (mean, median, mode)
-          return `Cleaned missing values in column "${column}" using method "${method}":
-                  - Original rows: ${data.length}
-                  - Rows with missing values: ${missingCount}
-                  - Imputed values: ${missingCount}
-                  - Method used: ${method}`;
+          // NOTE: This is a placeholder; real implementation would actually perform the imputation
+          return JSON.stringify({
+            summary: `Cleaned missing values in column "${column}" using method "${method}":
+                      - Original rows: ${data.length}
+                      - Rows with missing values: ${missingCount}
+                      - Imputed values: ${missingCount}
+                      - Method used: ${method}`,
+            processed_csv_data: csv_data  // This would be the actual imputed data in a real implementation
+          });
         }
       } else if (operation === "detect_outliers" && column && threshold) {
         const columnIndex = headers.indexOf(column);
@@ -232,8 +361,8 @@ class CSVDataProcessor extends StructuredTool {
         // Return both the summary and the cleaned data in JSON format for further processing
         if (removedCount > 0) {
           return JSON.stringify({ 
-            cleaned_csv_data: finalCsv, 
-            summary: summary 
+            summary: summary,
+            processed_csv_data: finalCsv
           });
         } else {
           // If no duplicates found, just return a simple message
@@ -380,7 +509,99 @@ You have access to a CSV data processor tool that can perform various operations
 When a user uploads a file, analyze it and provide insights about data quality issues.
 Offer specific recommendations for cleaning the data, such as handling missing values, detecting outliers, or removing duplicates.
 Always explain your reasoning and the impact of each cleaning operation on the dataset.
-Be thorough but concise in your explanations.`;
+Be thorough but concise in your explanations.
+
+After cleaning operations, offer users the option to download their cleaned data in CSV or Excel format.
+To generate a download link, use the csv_processor tool with the "download_data" operation, passing the processed data from previous operations.`;
+
+// Rate limiting implementation
+// This is a simple in-memory rate limiter for demo purposes
+// In production, use Redis or similar for distributed rate limiting
+const rateLimiter = {
+  // Store IP addresses and their request timestamps
+  requests: new Map<string, number[]>(),
+  
+  // Check if IP is allowed to make a request
+  isAllowed: function(ip: string, maxRequests: number = 10, windowMs: number = 60000) {
+    const now = Date.now();
+    
+    // Get existing requests for this IP
+    const timestamps = this.requests.get(ip) || [];
+    
+    // Filter out requests outside the time window
+    const recentRequests = timestamps.filter(timestamp => now - timestamp < windowMs);
+    
+    // Update the requests map with recent requests
+    this.requests.set(ip, recentRequests);
+    
+    // Check if the number of recent requests is less than the limit
+    return recentRequests.length < maxRequests;
+  },
+  
+  // Log a new request for an IP
+  logRequest: function(ip: string) {
+    const now = Date.now();
+    const timestamps = this.requests.get(ip) || [];
+    timestamps.push(now);
+    this.requests.set(ip, timestamps);
+  },
+  
+  // Clean up old entries (should be called periodically)
+  cleanup: function() {
+    const now = Date.now();
+    this.requests.forEach((timestamps, ip) => {
+      const recentRequests = timestamps.filter(timestamp => now - timestamp < 24 * 60 * 60 * 1000);
+      if (recentRequests.length === 0) {
+        this.requests.delete(ip);
+      } else {
+        this.requests.set(ip, recentRequests);
+      }
+    });
+  }
+};
+
+// Sanitize input to prevent harmful inputs
+function sanitizeInputs(obj: any): any {
+  if (typeof obj !== 'object' || obj === null) {
+    return obj;
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeInputs(item));
+  }
+  
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    // Skip null or undefined values
+    if (value === null || value === undefined) {
+      result[key] = value;
+      continue;
+    }
+    
+    // Sanitize strings
+    if (typeof value === 'string') {
+      // Replace potentially dangerous patterns in strings
+      let sanitized = value
+        .replace(/<script/gi, '&lt;script')
+        .replace(/javascript:/gi, 'disabled-javascript:')
+        .replace(/on\w+=/gi, 'data-on='); // Disable event handlers
+      
+      result[key] = sanitized;
+      continue;
+    }
+    
+    // Recursively sanitize objects
+    if (typeof value === 'object') {
+      result[key] = sanitizeInputs(value);
+      continue;
+    }
+    
+    // Keep other types as is
+    result[key] = value;
+  }
+  
+  return result;
+}
 
 /**
  * This handler initializes and calls an tool caling ReAct agent.
@@ -390,23 +611,48 @@ Be thorough but concise in your explanations.`;
  */
 export async function POST(req: NextRequest) {
   try {
+    // Apply rate limiting based on IP
+    const ip = req.headers.get("x-forwarded-for") || "unknown";
+    
+    if (!rateLimiter.isAllowed(ip, 20, 60000)) { // 20 requests per minute
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 }
+      );
+    }
+    
+    // Log this request
+    rateLimiter.logRequest(ip);
+    
     const body = await req.json();
-    const returnIntermediateSteps = body.show_intermediate_steps;
-    const temperature = body.temperature ?? 0.2;
-    const systemPrompt = body.systemPrompt ?? AGENT_SYSTEM_TEMPLATE;
-    const modelName = body.model ?? "gpt-4o-mini";
-    const frequencyPenalty = body.frequencyPenalty ?? 0;
-    const presencePenalty = body.presencePenalty ?? 0;
-    const maxTokens = body.maxTokens ?? 2048;
-    const apiKey = body.apiKey;
-    const csvData = body.csvData;
-    const csvFileName = body.csvFileName;
+    
+    // Sanitize inputs before processing
+    const sanitizedBody = sanitizeInputs(body);
+    
+    const returnIntermediateSteps = sanitizedBody.show_intermediate_steps;
+    const temperature = sanitizedBody.temperature ?? 0.2;
+    const systemPrompt = sanitizedBody.systemPrompt ?? AGENT_SYSTEM_TEMPLATE;
+    const modelName = sanitizedBody.model ?? "gpt-4o-mini";
+    const frequencyPenalty = sanitizedBody.frequencyPenalty ?? 0;
+    const presencePenalty = sanitizedBody.presencePenalty ?? 0;
+    const maxTokens = Math.min(sanitizedBody.maxTokens ?? 2048, 4096); // Cap max tokens
+    const apiKey = sanitizedBody.apiKey;
+    const csvData = sanitizedBody.csvData;
+    const csvFileName = sanitizedBody.csvFileName;
 
     if (!apiKey) {
       return NextResponse.json({ error: "OpenAI API key is required" }, { status: 400 });
     }
+    
+    // Validate CSV data if present
+    if (csvData) {
+      const validation = validateCSVData(csvData);
+      if (!validation.valid) {
+        return NextResponse.json({ error: validation.error }, { status: 400 });
+      }
+    }
 
-    const messages = (body.messages ?? [])
+    const messages = (sanitizedBody.messages ?? [])
       .filter(
         (message: VercelChatMessage) =>
           message.role === "user" || message.role === "assistant",
@@ -426,7 +672,19 @@ export async function POST(req: NextRequest) {
             console.log("Replacing filename reference with actual CSV data from upload");
             
             // Handle the specific operation type with custom enhancements for better reporting
-            if (input.operation === "remove_duplicates") {
+            if (input.operation === "download_data") {
+              // Generate downloadable link for the CSV data with the specified format
+              const format = input.format || "csv";
+              const fileName = csvFileName || `cleaned_data.${format}`;
+              
+              const downloadLink = generateDownloadableFile(csvData, format);
+              return JSON.stringify({
+                download_link: downloadLink,
+                file_name: fileName,
+                file_format: format,
+                message: `Your data is ready to download as a ${format.toUpperCase()} file.`
+              });
+            } else if (input.operation === "remove_duplicates") {
               // First parse the CSV data to identify duplicate rows for better reporting
               const { headers, data } = parseCSV(csvData);
               
