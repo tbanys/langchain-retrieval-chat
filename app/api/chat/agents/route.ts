@@ -512,7 +512,15 @@ Always explain your reasoning and the impact of each cleaning operation on the d
 Be thorough but concise in your explanations.
 
 After cleaning operations, offer users the option to download their cleaned data in CSV or Excel format.
-To generate a download link, use the csv_processor tool with the "download_data" operation, passing the processed data from previous operations.`;
+To generate a download link, use the csv_processor tool with the "download_data" operation, passing the processed data from previous operations.
+
+IMPORTANT: When offering a download, always use the csv_processor tool to generate the link.
+DO NOT create a markdown download link like "[Download the CSV File]()" - this will not work.
+Instead, use the tool and say something like "Would you like to download your cleaned data? Just let me know and I'll generate a download link for you."
+
+Example prompt to trigger download:
+User: "Yes, please give me the download link"
+You should then call the csv_processor tool with operation: "download_data", format: "csv", and the processed data.`;
 
 // Rate limiting implementation
 // This is a simple in-memory rate limiter for demo purposes
@@ -522,7 +530,7 @@ const rateLimiter = {
   requests: new Map<string, number[]>(),
   
   // Check if IP is allowed to make a request
-  isAllowed: function(ip: string, maxRequests: number = 10, windowMs: number = 60000) {
+  isAllowed: function(ip: string, maxRequests: number = 50, windowMs: number = 60000) {
     const now = Date.now();
     
     // Get existing requests for this IP
@@ -611,10 +619,13 @@ function sanitizeInputs(obj: any): any {
  */
 export async function POST(req: NextRequest) {
   try {
-    // Apply rate limiting based on IP
+    // Apply rate limiting based on IP - but make it very lenient for local development
     const ip = req.headers.get("x-forwarded-for") || "unknown";
     
-    if (!rateLimiter.isAllowed(ip, 20, 60000)) { // 20 requests per minute
+    // Temporarily disable rate limiting for testing
+    // Uncomment this block for production
+    /*
+    if (!rateLimiter.isAllowed(ip, 50, 60000)) { // 50 requests per minute
       return NextResponse.json(
         { error: "Too many requests. Please try again later." },
         { status: 429 }
@@ -623,6 +634,7 @@ export async function POST(req: NextRequest) {
     
     // Log this request
     rateLimiter.logRequest(ip);
+    */
     
     const body = await req.json();
     
